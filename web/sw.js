@@ -4,12 +4,13 @@
 const BUILD_ID = "dev";
 const CACHE = `habit-chain-${BUILD_ID}`;
 
+// 정적 자산만 캐시한다.
+//
+// "/"와 "/habits"는 절대 넣지 않는다. 그 응답은 DoltHub의 현재 내용이라,
+// 캐시에 들어가는 순간 영원히 옛 기록을 보여주게 된다.
 const SHELL = [
-  "./",
-  "./index.html",
   "./app.css",
-  "./app.wasm",
-  "./wasm_exec.js",
+  "./htmx.min.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
@@ -36,27 +37,30 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
+  if (req.method !== "GET") return;
 
-  // DoltHub·GitHub API 호출은 절대 가로채지 않는다. 항상 실제 네트워크로.
-  if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) {
-    return;
-  }
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
 
-  // 화면 진입은 새 버전을 먼저 시도하고, 오프라인이면 캐시로 떨어진다.
+  // 데이터가 실린 응답은 손대지 않는다. 캐시에 들어가면 옛 기록이 굳는다.
+  if (/^\/(habits|export|api)(\/|$)/.test(url.pathname)) return;
+
+  // 화면 진입. 껍데기에는 데이터가 없으니 캐시해도 안전하다 —
+  // 목록은 껍데기가 뜬 뒤 /habits를 따로 불러 채운다.
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+          caches.open(CACHE).then((c) => c.put("./", copy));
           return res;
         })
-        .catch(() => caches.match("./index.html"))
+        .catch(() => caches.match("./"))
     );
     return;
   }
 
-  // 나머지 자산은 캐시 우선. 없으면 받아서 캐시에 넣는다.
+  // 나머지 정적 자산은 캐시 우선.
   event.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       if (res.ok) {

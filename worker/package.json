@@ -1,12 +1,20 @@
 {
   "name": "habit-chain-worker",
   "private": true,
-  "description": "habit-chain 정적 자산 서빙 + DoltHub 쓰기 프록시",
+  "description": "habit-chain — 전면 HTMX. 화면 렌더링 + DoltHub 읽기/쓰기",
   "scripts": {
-    "dev": "wrangler dev --port 8788 --local",
-    "deploy": "wrangler deploy"
+    "dev": "wrangler dev --port 8788",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "check": "tsc --noEmit"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20260821.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11",
     "wrangler": "^4.125.0"
+  },
+  "dependencies": {
+    "htmx.org": "2.0.10"
   }
 }

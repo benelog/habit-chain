@@ -1,23 +1,27 @@
 {
-  // habit-chain: 정적 자산과 DoltHub 쓰기 프록시를 한 Worker에서 서빙한다.
+  // habit-chain: 화면(HTML 조각)과 DoltHub 읽기·쓰기를 한 Worker에서 다 한다.
   // 배포:  cd worker && npx wrangler deploy
   // 시크릿: npx wrangler secret put DOLTHUB_TOKEN
   //        npx wrangler secret put WRITE_KEY
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "habit-chain",
-  "main": "src/index.js",
+  "main": "src/index.ts",
   "compatibility_date": "2026-08-01",
   "assets": {
     "directory": "../web",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    // 정적 자산이 없는 경로는 Worker가 받는다. "/"도 Worker가 그린다.
+    "not_found_handling": "none",
+    // 자산 레이어가 Worker보다 먼저 돈다. run_worker_first가 없으면
+    // "/"가 여기서 잡혀 라우트가 아예 실행되지 않는다.
+    "run_worker_first": ["/", "/habits", "/habits/*", "/export", "/schema.sql", "/api/*"]
   },
   "observability": {
     "enabled": true
   },
   "vars": {
-    // 쓰기를 허용할 DoltHub DB. 첫 항목이 앱의 기본 DB가 된다.
-    // 비워두면 토큰이 닿는 모든 DB에 쓸 수 있다.
+    // 읽고 쓸 DoltHub DB. 첫 항목을 쓴다.
+    // 다른 사람이 자기 DB를 쓰려면 이 저장소를 포크해 자기 Worker를 둔다.
     "ALLOWED_DB": "benelog/habit-chain",
     "DOLT_BRANCH": "main"
   }
