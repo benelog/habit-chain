@@ -1,18 +1,17 @@
 /**
- * render.ts의 조각을 문자열로 확인한다.
+ * render.ts fragments, checked as strings.
  *
- * 여기서 꼭 지켜야 할 것이 하나 있다. 브라우저에서 도는 스크립트가 통째로
- * 템플릿 리터럴 안에 들어 있어서, 이스케이프가 한 겹 어긋나면 그 스크립트가
- * 통째로 파싱에 실패한다. 화면은 멀쩡히 뜨는데 설정도 진행 막대도 오늘 날짜도
- * 아무것도 안 도는 상태가 되고, 서버 테스트로는 하나도 안 잡힌다.
- * 그래서 shell()이 뱉은 스크립트를 여기서 실제로 파싱해 본다.
+ * One thing matters most here: the browser script lives inside a template
+ * literal, so one misplaced escape breaks the entire script. The page still
+ * renders while settings, the progress bar and today's date all go dead — and
+ * no server test would notice. So shell()'s script is really parsed below.
  */
 
 import { describe, expect, it } from "vitest";
 import { renderHabits, renderSetup, shell } from "./render";
 import type { State } from "./model";
 
-/** shell()이 심어 둔 인라인 스크립트만 꺼낸다. */
+/** Pulls out just the inline script shell() embeds. */
 function inlineScript(html: string): string {
   const m = /<script>([\s\S]*?)<\/script>/.exec(html);
   expect(m, "shell()에 인라인 스크립트가 있어야 한다").not.toBeNull();
@@ -22,7 +21,7 @@ function inlineScript(html: string): string {
 describe("shell", () => {
   it("인라인 스크립트가 문법적으로 성립한다", () => {
     const src = inlineScript(shell());
-    // new Function은 파싱만 하고 실행하지 않는다. document도 htmx도 필요 없다.
+    // new Function parses without running: no document or htmx needed.
     expect(() => new Function(src)).not.toThrow();
   });
 
@@ -41,7 +40,7 @@ describe("shell", () => {
     const html = shell();
     expect(html).toContain("habitChain.save()");
     expect(html).toContain("habitChain.forget()");
-    // onchange 자동 저장으로 돌아가면 반쯤 붙여 넣은 토큰이 그대로 저장된다.
+    // Going back to onchange autosave would store half-pasted tokens.
     expect(html).not.toContain("habitChain.saveDb");
     expect(html).not.toContain("habitChain.saveToken");
   });
@@ -88,12 +87,12 @@ describe("renderHabits", () => {
   });
 
   it("달 이름은 줄의 첫 칸이 속한 달을 따른다", () => {
-    // 7월 26일~8월 1일 줄에 8월이 붙으면 그 줄 전체를 8월로 읽게 된다.
+    // Labelling the Jul 26 - Aug 1 row "August" misreads the whole row.
     const html = renderHabits(state, today);
     const months = [...html.matchAll(/<div class="mon" aria-hidden="true">([^<]*)<\/div>/g)].map(
       (m) => m[1],
     );
-    // 머리글 한 칸 + 5주. 7월로 시작해 8월 2일 줄에서 한 번만 바뀐다.
+    // One header cell plus five weeks, changing once at the Aug 2 row.
     expect(months).toEqual(["", "7월", "", "8월", "", ""]);
   });
 
@@ -115,7 +114,7 @@ describe("renderHabits", () => {
     const html = renderHabits(state, today);
     expect(html).toContain('hx-put="/habits/a"');
     expect(html).toContain('name="name" type="text" value="달리기"');
-    // textarea의 내용이 곧 폼의 기본값이다. 취소(form.reset)가 여기로 되돌아간다.
+    // The textarea's content is the form default that cancel resets to.
     expect(html).toContain("아침에 30분.\n비 오면 실내에서.</textarea>");
   });
 

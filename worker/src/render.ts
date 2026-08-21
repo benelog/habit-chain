@@ -1,28 +1,25 @@
 /**
- * HTML 조각을 만든다.
+ * HTML fragments.
  *
- * 화면의 규칙 하나만 기억하면 된다 — 껍데기는 무채색이고, 색은 사슬만 갖는다.
- * 습관 색은 사용자가 고른 값이라 UI가 색을 쓰면 둘이 서로 싸운다.
+ * One rule holds the screen together: the shell is greyscale and only chains
+ * carry colour. Habit colours are the user's, so UI colour would fight them.
  *
- * 조각은 두 가지 크기로 나간다. 목록 전체(#habits)와 카드 하나(.card)다.
- * 체크 한 번에 목록 전체를 갈아끼우면 화면이 통째로 깜빡이고 포커스도 날아가므로,
- * 토글은 카드 하나만 바꾸고 상단의 오늘 요약은 OOB로 따라 바꾼다.
+ * Fragments come in two sizes — the whole list (#habits) and one card (.card).
+ * Toggling swaps only the card, with the day summary following out-of-band.
  */
 
 import type { DateStr, Habit, State, Stats } from "./model";
 import { addDays, checkSet, compute, datesOf, dayOfWeek } from "./model";
 
-/** 카드마다 보여주는 사슬 그리드의 주 수. */
+/** Weeks shown in each card's chain grid. */
 const GRID_WEEKS = 5;
 
 const DOW = ["일", "월", "화", "수", "목", "금", "토"];
 
 /**
- * 새 습관에 고를 수 있는 색.
- *
- * 네이티브 색 선택기를 없앤 자리다. 아무 색이나 고를 수 있으면 화면이 금방
- * 안 어울리는 색으로 채워진다. 밝은 배경과 어두운 배경 양쪽에서 읽히는
- * 중간 명도만 골라 뒀다.
+ * Colours a new habit may take. This replaced the native colour picker: free
+ * choice fills the screen with clashing colours. All are mid-lightness so they
+ * read on light and dark backgrounds alike.
  */
 export const SWATCHES = [
   "#e2542f",
@@ -35,7 +32,7 @@ export const SWATCHES = [
   "#7d7a75",
 ];
 
-/** HTML에 넣기 전에 반드시 통과시킨다. 습관 이름은 사용자가 넣는 값이다. */
+/** Every user-supplied value passes through here before reaching HTML. */
 export function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -45,21 +42,21 @@ export function esc(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** "2026-08-21" → "8월 21일" */
+/** Formats a date for display: "2026-08-21" becomes "8월 21일". */
 function md(d: DateStr): string {
   return `${Number(d.slice(5, 7))}월 ${Number(d.slice(8, 10))}일`;
 }
 
 /**
- * 토글 버튼이 공통으로 다는 htmx 속성.
+ * Shared htmx attributes for toggle buttons.
  *
- * hx-disabled-elt이 없으면 왕복 2초 동안 연타가 되고 같은 요청이 여러 번 나간다.
- * INSERT IGNORE / DELETE라 데이터가 깨지지는 않지만 커밋이 그만큼 쌓인다.
+ * Without hx-disabled-elt the 2s round trip invites double taps. INSERT IGNORE
+ * and DELETE keep the data sound, but commits pile up.
  *
- * hx-indicator를 카드에 거는 이유: 요청 중에는 카드가 흐려지면서 pointer-events가
- * 꺼진다. 같은 카드의 다른 칸을 겹쳐 누르면 응답이 뒤섞인다.
- * (indicator 목록에 `this`는 못 쓴다 — htmx가 CSS 타입 선택자로 읽어 아무것도 못 찾는다.
- * 누른 칸은 hx-disabled-elt으로 disabled가 되므로 CSS가 그걸 보고 깜빡인다.)
+ * hx-indicator sits on the card so it dims and stops taking pointer events —
+ * overlapping taps on the same card would interleave responses. (`this` cannot
+ * go in the indicator list: htmx reads it as a CSS type selector and matches
+ * nothing. The pressed cell gets disabled instead, and CSS pulses off that.)
  */
 function toggleAttrs(habitID: string, date: DateStr): string {
   return (
@@ -69,7 +66,7 @@ function toggleAttrs(habitID: string, date: DateStr): string {
   );
 }
 
-/** renderHabits는 #habits 안에 들어갈 조각 전체를 만든다. */
+/** The whole fragment that goes inside #habits. */
 export function renderHabits(state: State, today: DateStr): string {
   if (state.habits.length === 0) {
     return renderEmpty();
@@ -81,7 +78,7 @@ export function renderHabits(state: State, today: DateStr): string {
   );
 }
 
-/** 카드 하나만. 토글 응답의 본체다. 습관이 있는지는 부르는 쪽이 먼저 본다. */
+/** One card — the body of a toggle response. Callers check it exists first. */
 export function renderOneCard(state: State, habitID: string, today: DateStr): string {
   const h = state.habits.find((x) => x.id === habitID);
   return h ? renderCard(h, state, checkSet(state), today) : "";
@@ -99,11 +96,9 @@ function renderEmpty(): string {
 }
 
 /**
- * 설정이 비었을 때 첫 화면에 놓는 안내.
- *
- * 오류가 아니라 온보딩이다. 그래서 renderError를 쓰지 않는다 — 저기의
- * `다시 불러오기`는 여기서 아무것도 고치지 못한다. 고칠 곳은 설정 하나뿐이라
- * 그리로 가는 버튼만 둔다.
+ * Shown when settings are empty. This is onboarding, not an error, so it is not
+ * renderError — that screen's "reload" fixes nothing here. Settings is the only
+ * place to go, so that is the only button.
  */
 export function renderSetup(): string {
   return `<div class="empty setup">
@@ -123,20 +118,15 @@ export function renderSetup(): string {
 }
 
 /**
- * DB는 있는데 모양이 안 맞을 때.
- *
- * 새 DB(테이블이 아예 없음)와 옛 DB(컬럼이 모자람)를 한 화면으로 받는다.
- * 둘 다 사용자가 할 일은 같다 — 버튼 하나.
- *
- * 예전에는 여기서 스키마 SQL을 복사해 DoltHub 콘솔에 붙여 넣으라고 했다.
- * 앱이 쓰기에 쓰는 길로 그 문장을 대신 보낼 수 있으므로, 손으로 하는 길은
- * 거부당했을 때를 위해 링크로만 남긴다.
+ * The DB exists but its shape is wrong — no branch, no tables, or a missing
+ * column. All three take the same action from the user: one button. The manual
+ * schema SQL stays as a link, for when that path is refused.
  */
 export function renderPrepare(
   shape: { branch: boolean; habits: boolean; description: boolean },
   hasToken: boolean,
 ): string {
-  // 세 가지 상태를 한 화면으로 받는다. 사용자가 할 일은 셋 다 버튼 하나다.
+  // Three states, one screen.
   let what = "이 DB는 지난 버전의 표를 쓰고 있습니다. 설명(description) 칸이 없습니다.";
   if (!shape.branch) {
     what = "이 DB에는 아직 커밋이 하나도 없습니다. 그래서 읽을 브랜치조차 없습니다.";
@@ -164,8 +154,8 @@ export function renderPrepare(
 }
 
 /**
- * 오늘 요약. 이 앱을 열어서 답을 얻고 싶은 질문은 하나다 — 오늘 다 했나?
- * 그래서 목록 맨 위에 그 답만 둔다.
+ * The day summary. People open this app to answer one question — am I done
+ * today? — so that answer sits alone at the top.
  */
 export function renderDay(state: State, today: DateStr, oob: boolean): string {
   const idx = checkSet(state);
@@ -189,12 +179,12 @@ export function renderDay(state: State, today: DateStr, oob: boolean): string {
 </header>`;
 }
 
-/** 스크린 리더에만 읽히는 결과 알림. 목록 전체에 aria-live를 걸면 매번 다 읽는다. */
+/** Screen-reader-only result. aria-live on the list would reread everything. */
 export function renderLive(text: string): string {
   return `<span id="live" class="sr-only" role="status" hx-swap-oob="true">${esc(text)}</span>`;
 }
 
-/** 불러오기에 실패했을 때. 빈 목록과 구별되어야 한다. */
+/** A failed load. Must not look like an empty list. */
 export function renderError(msg: string): string {
   return `<div class="empty">
     <h2>목록을 불러오지 못했습니다</h2>
@@ -204,8 +194,8 @@ export function renderError(msg: string): string {
 }
 
 /**
- * 쓰기가 실패했을 때. 목록은 그대로 두고 이것만 띄운다.
- * 화면에 있던 기록을 오류 문구로 덮어 버리면 방금까지 보던 것이 사라진다.
+ * A failed write. The list stays; overwriting it with an error would erase what
+ * the user was just looking at.
  */
 export function renderToast(msg: string): string {
   return `<div class="toast" role="alert">
@@ -220,7 +210,7 @@ function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr): s
   const color = h.color || SWATCHES[0]!;
   const id = esc(h.id);
 
-  // 0일째가 두 가지 뜻을 갖는다. 아직 시작 전인 것과, 이어오다 끊긴 것.
+  // Zero days means two different things: not started, or broken.
   let word = "일째 이어가는 중";
   if (stats.current === 0) {
     word = stats.total === 0 ? "일째 · 오늘 첫 칸을 채우세요" : "일째 · 오늘 다시 시작하세요";
@@ -248,23 +238,22 @@ ${renderDesc(h)}${renderEdit(h)}  <div class="card-body">${renderGrid(h, idx, to
 }
 
 /**
- * 설명은 여러 줄 평문이다. 줄바꿈은 CSS(white-space: pre-wrap)가 살린다 —
- * <br>로 바꾸면 사용자가 적은 글자가 아닌 것이 화면에 섞인다.
- * 비어 있으면 자리 자체를 만들지 않는다. 빈 칸이 카드마다 벌어진다.
+ * Multiline plain text. CSS (white-space: pre-wrap) keeps the newlines; turning
+ * them into <br> would mix markup into what the user typed. Empty descriptions
+ * emit nothing rather than a gap in every card.
  */
 function renderDesc(h: Habit): string {
   return h.description === "" ? "" : `  <p class="card-desc">${esc(h.description)}</p>\n`;
 }
 
 /**
- * renderEdit은 카드마다 접혀 있는 편집 폼을 함께 낸다.
+ * The edit form ships folded inside every card. Fetching it on demand would
+ * cost a round trip — a read here takes nearly a second — so both the edit and
+ * cancel buttons would stall. Folded in, opening is one class and only saving
+ * reaches the server.
  *
- * 폼을 서버에서 따로 받아 오지 않는 이유는 왕복이다 — 이 앱의 읽기 한 번이
- * 1초 가까이 걸려서, 수정 버튼과 취소 버튼이 그때마다 멈칫한다.
- * 카드에 같이 실어 두면 여닫는 것은 클래스 하나이고, 서버로 가는 것은 저장뿐이다.
- *
- * 취소가 form.reset()으로 되돌아가는 것은 여기 적힌 값이 곧 폼의 기본값이기
- * 때문이다. 저장에 성공하면 서버가 새 카드로 통째로 갈아 끼우므로 편집 상태도 함께 풀린다.
+ * Cancel works through form.reset() because these values are the form's
+ * defaults. A successful save replaces the card, which clears the edit state.
  */
 function renderEdit(h: Habit): string {
   const id = esc(h.id);
@@ -293,16 +282,14 @@ function renderStats(s: Stats): string {
 }
 
 /**
- * renderGrid는 최근 GRID_WEEKS 주를 요일 정렬 그리드로 그린다.
+ * The last GRID_WEEKS weeks, aligned by weekday.
  *
- * 붙어 있는 날들은 사이를 이어 하나의 사슬로 보이게 한다. 줄이 바뀌는 자리
- * (토→일)에도 짧은 꼬리를 달아 둔다 — 거기서 끊긴 것처럼 보이면 앱이 하는
- * 말과 화면이 어긋난다.
+ * Adjacent days are joined so they read as one chain, including a short tail
+ * across the Saturday-to-Sunday wrap — a break there would contradict what the
+ * app says. Weeks run down the page, so month labels sit in the left gutter.
  *
- * 주가 세로로 흐르므로 달 이름은 맨 왼쪽 칸에 붙는다.
- *
- * 칸 안에는 날짜를 적는다. 사슬 모양만으로는 "언제 체크했는지"를 셀 수가 없다.
- * 연결부는 칸 바깥(gap)에 그려지므로 숫자가 들어가도 사슬은 그대로다.
+ * Cells carry their date: chain shape alone cannot answer "which day was that?"
+ * Links are drawn in the gaps, so the numbers leave the chain intact.
  */
 function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
   const end = addDays(today, 6 - dayOfWeek(today));
@@ -317,7 +304,7 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
     done.push(idx.has(`${h.id}|${d}`));
   }
 
-  // 사슬이 마지막으로 끊긴 자리. 오늘은 제외한다 — 오늘 밤에 하면 되니까.
+  // Where the chain last broke. Today is excluded — there is still tonight.
   let broke = -1;
   for (let i = days - 1; i >= 1; i--) {
     if (dates[i]! >= today) continue;
@@ -337,9 +324,9 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
     const d = dates[i]!;
 
     if (i % 7 === 0) {
-      // 줄의 첫 칸이 속한 달을 적고, 달이 바뀐 줄에만 붙인다.
-      // 예전에는 "1일을 품은 줄"에 붙였는데, 그러면 7월이 엿새인 줄에 8월이 붙어
-      // 줄 전체를 잘못 읽게 만든다. 달의 경계는 "8/1" 칸이 이미 짚어 준다.
+      // Label the month of the row's first cell, and only when it changes.
+      // Labelling the row that contains the 1st instead put "August" on a row
+      // that is mostly July. The "8/1" cell already marks the boundary.
       const prev = i === 0 ? "" : dates[i - 7]!.slice(0, 7);
       const label = d.slice(0, 7) === prev ? "" : `${Number(d.slice(5, 7))}월`;
       parts.push(`<div class="mon" aria-hidden="true">${label}</div>`);
@@ -360,7 +347,7 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
     }
     if (d === today) cls += " today";
 
-    // 달이 바뀌는 칸만 "8/1"로 적는다. 그 한 칸이 그리드 안에서 달의 경계가 된다.
+    // Only the 1st reads "8/1" — that cell is the month boundary in the grid.
     const dayNum = Number(d.slice(8, 10));
     const shown = dayNum === 1 ? `${Number(d.slice(5, 7))}/1` : String(dayNum);
     if (dayNum === 1) cls += " first";
@@ -396,17 +383,16 @@ const GEAR =
   `stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="2.7"/>` +
   `<path d="M10 2.4v1.9M10 15.7v1.9M17.6 10h-1.9M4.3 10H2.4M15.4 4.6l-1.4 1.4M6 14l-1.4 1.4M15.4 15.4 14 14M6 6 4.6 4.6"/></svg>`;
 
-/** 맞물린 고리 두 개. 앱 이름을 그대로 그린 것이다. */
+/** Two interlocking links — the app's name, drawn. */
 const MARK =
   `<svg viewBox="0 0 30 16" width="28" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">` +
   `<rect x="1" y="3" width="15" height="10" rx="5"/><rect x="14" y="3" width="15" height="10" rx="5"/></svg>`;
 
 /**
- * shell은 첫 요청에 돌려주는 페이지다.
- *
- * 데이터를 담지 않는다. 첫 GET은 htmx 요청이 아니라서 hx-headers가 붙지 않고,
- * 그러면 서버가 사용자의 로컬 날짜도 어느 DB를 볼지도 모른다. 그래서 목록은
- * hx-trigger="load"로 한 번 더 요청해서 채운다 — 그 요청부터는 헤더가 붙는다.
+ * The page returned on first load. It carries no data: the first GET is not an
+ * htmx request, so no hx-headers are attached and the server knows neither the
+ * user's local date nor which DB to read. The list fills itself with a second
+ * request via hx-trigger="load", which does carry the headers.
  */
 export function shell(): string {
   const swatches = SWATCHES.map(
@@ -549,19 +535,19 @@ window.habitChain = {
     try { return localStorage.getItem("habit-chain.token") || ""; } catch { return ""; }
   },
   /**
-   * 설정은 누를 때만 저장된다.
+   * Settings save only on the button.
    *
-   * 예전에는 input의 onchange가 곧 저장이었다. 토큰을 반쯤 붙여 넣고 포커스를
-   * 옮기기만 해도 그 반쪽이 저장됐고, 되돌릴 자리가 없었다. 이제 저장은 버튼
-   * 하나이고 지우는 버튼이 그 옆에 있다.
+   * When onchange was the save, half-pasting a token and moving focus stored
+   * the half, with nothing to undo it. Now one button saves and one clears.
    *
-   * DB를 바꾸면 화면에 있는 기록은 남의 것이다. 그래서 저장은 곧 다시 읽기다.
+   * Changing the DB makes what is on screen someone else's, so saving reloads.
    */
   save() {
     const db = document.getElementById("set-db").value.trim();
     const token = document.getElementById("set-token").value.trim();
-    // 슬래시를 [/]로 적는다. 이 스크립트는 템플릿 리터럴 안에 있어서 \\/로 쓰면
-    // 이스케이프가 한 겹 풀려 정규식이 조각나고, 스크립트 전체가 파싱에 실패한다.
+    // The slash is written [/]: this script sits inside a template literal, so
+    // an escaped slash loses a layer and shatters the regex, taking the whole
+    // script with it.
     if (db !== "" && !/^[A-Za-z0-9_-]{1,64}[/][A-Za-z0-9_-]{1,64}$/.test(db)) {
       this.status("DB 이름은 owner/name 형식이어야 합니다.", true);
       return;
@@ -577,28 +563,27 @@ window.habitChain = {
     document.getElementById("set-token").value = token;
     this.syncExport();
 
-    // DB가 비면 읽을 곳이 없다. 설정을 닫아 봐야 안내 문구만 보게 되니 열어 둔다.
+    // Nothing to read, so closing would only reveal guidance. Stay open.
     if (db === "") {
       this.status("DB 이름이 비어 있어 읽을 사슬이 없습니다.", true);
       this.reload();
       return;
     }
 
-    // 저장이 끝나면 설정에는 더 볼 것이 없다. 닫고, 그 자리에서 새 DB를 읽는다.
+    // Nothing left to see here. Close, and read the new DB in place.
     document.getElementById("settings").close();
     this.say(token === "" ? "저장했습니다. 토큰이 없어 읽기만 됩니다." : "저장했습니다. 사슬을 다시 읽습니다.");
     this.reload();
   },
   /**
-   * reload는 목록을 다시 읽는다.
+   * Reloads the list.
    *
-   * htmx.trigger("#habits", "load")로는 안 된다. hx-trigger="load"인 요소에
-   * htmx는 리스너를 걸지 않고 처음 한 번만 발동시키기 때문이다(htmx.js의
-   * addTriggerHandler). 그래서 저장을 눌러도 화면은 그대로였고 새로고침해야
-   * 새 DB가 보였다. 이제 요청을 직접 낸다.
+   * htmx.trigger("#habits", "load") does nothing: htmx attaches no listener for
+   * a load trigger, firing it once at init instead (addTriggerHandler). Saving
+   * left the screen unchanged until a refresh, so issue the request directly.
    *
-   * source를 넘기는 것이 중요하다. hx-headers는 상속되는 속성이라, 이 요소에서
-   * body까지 거슬러 올라가야 DB와 토큰이 헤더에 실린다.
+   * Passing source matters — hx-headers is inherited, and the walk up to body
+   * is what puts the DB and token on the request.
    */
   reload() {
     const el = document.getElementById("habits");
@@ -606,18 +591,18 @@ window.habitChain = {
     el.innerHTML = '<p class="sr-only">불러오는 중</p><div class="sk" aria-hidden="true"><div></div><div></div></div>';
     htmx.ajax("GET", "/habits", { source: el, target: el, swap: "innerHTML" });
   },
-  // 화면이 바뀐 이유를 스크린 리더에 한 줄로 알린다. 서버의 renderLive와 같은 자리다.
+  // Tells screen readers why the screen changed. Same slot as renderLive.
   say(msg) {
     const el = document.getElementById("live");
     if (el) el.textContent = msg;
   },
-  // 입력란에서 Enter를 눌러도 저장된다. 설정은 form이 아니라 dialog 안이라 직접 잇는다.
+  // Enter saves too. Settings live in a dialog, not a form, so wire it up.
   enterSaves(event) {
     if (event.key !== "Enter") return;
     event.preventDefault();
     this.save();
   },
-  // 눌렀는데 아무 일도 안 일어난 것처럼 보이지 않게, 결과를 한 줄로 말한다.
+  // One line of result, so pressing the button never looks like a no-op.
   status(msg, bad) {
     const el = document.getElementById("set-status");
     if (!el) return;
@@ -629,7 +614,7 @@ window.habitChain = {
       el.classList.remove("bad");
     }, 5000);
   },
-  // 내보내기는 링크다. htmx 요청이 아니라서 헤더가 안 붙으니 DB를 주소에 담는다.
+  // Export is a link, so no headers are attached — the DB goes in the URL.
   syncExport() {
     const a = document.getElementById("export-link");
     const db = this.db();
@@ -650,10 +635,9 @@ window.habitChain = {
     document.getElementById("toast").innerHTML = "";
   },
   /**
-   * 수정은 카드 안에서 한다.
-   *
-   * 폼은 이미 카드에 실려 나온다. 여는 것은 클래스 하나뿐이고 서버로 가는 것은
-   * 저장뿐이라, 수정 버튼도 취소 버튼도 기다림이 없다.
+   * Editing happens inside the card. The form already shipped with it, so
+   * opening is one class and only saving reaches the server — no waiting on
+   * either the edit or the cancel button.
    */
   edit(btn) {
     const card = btn.closest(".card");
@@ -665,7 +649,7 @@ window.habitChain = {
       el.select();
     }
   },
-  // 취소는 손댄 것을 되돌린다. 폼의 기본값이 곧 서버가 준 값이라 reset이면 된다.
+  // Cancel undoes edits: the form's defaults are what the server sent.
   cancelEdit(el) {
     const card = el.closest(".card");
     if (!card) return;
@@ -673,19 +657,19 @@ window.habitChain = {
     if (form) form.reset();
     card.classList.remove("editing");
   },
-  // 편집 중 Esc는 취소다. 다이얼로그가 아니라서 브라우저가 대신 해 주지 않는다.
+  // Esc cancels. This is not a dialog, so the browser will not do it for us.
   escCancels(event) {
     if (event.key !== "Escape") return;
     event.preventDefault();
     this.cancelEdit(event.target);
   },
-  // 빈 화면의 예시를 누르면 입력란이 채워진다. 첫 습관을 만드는 데 드는 손을 줄인다.
+  // Tapping an example on the empty screen fills the field.
   suggest(name) {
     const el = document.getElementById("new-name");
     el.value = name;
     el.focus();
   },
-  // 추가에 성공하면 색을 다음 것으로 넘긴다. 안 그러면 전부 같은 색이 된다.
+  // Advance the colour after a successful add, or everything ends up alike.
   afterAdd(event, form) {
     if (!event.detail.successful || event.detail.xhr.status >= 400) return;
     const dots = [...form.querySelectorAll(".swatches input")];

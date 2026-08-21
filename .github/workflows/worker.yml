@@ -12,14 +12,14 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    # 배포를 일부러 멈추고 싶으면 저장소 변수 DEPLOY_WORKER를 false로 둔다.
+    # Set the repo variable DEPLOY_WORKER to false to stop deploying.
     if: ${{ vars.DEPLOY_WORKER != 'false' }}
     steps:
-      # 시크릿 확인이 맨 앞이다. 없으면 여기서 끝내야 설치와 테스트를 헛돌리지 않는다.
+      # Secrets are checked first, so a missing one stops the run before the
+      # install and tests are spent.
       #
-      # 예전에는 시크릿이 없으면 배포 단계를 조용히 건너뛰고 초록불로 끝났다.
-      # 그래서 커밋은 올라갔는데 사이트는 옛 코드를 계속 서빙하는 동안,
-      # Actions 화면만 보면 배포된 줄 알았다. 이제는 실패로 멈춘다.
+      # This step used to skip the deploy silently and finish green, so pushed
+      # commits never shipped while Actions looked healthy. Now it fails.
       - name: Cloudflare 시크릿 확인
         env:
           TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -56,7 +56,7 @@ jobs:
       - name: 서비스 워커 캐시 버전 갱신
         run: sed -i "s/const BUILD_ID = \"dev\";/const BUILD_ID = \"${GITHUB_SHA::12}\";/" web/sw.js
 
-      # 빌드는 sw.js를 고친 뒤여야 한다. web/ 을 dist/ 로 복사하기 때문이다.
+      # Build after editing sw.js: the build copies web/ into dist/.
       - name: 빌드
         working-directory: worker
         run: npm run build

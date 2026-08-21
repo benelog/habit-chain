@@ -1,11 +1,8 @@
 /**
- * DoltHub API 접근.
+ * DoltHub API access.
  *
- * 읽기와 쓰기가 서로 다른 엔드포인트를 쓴다. 읽기는 그냥 GET이고,
- * 쓰기는 작업을 걸어 두고 끝날 때까지 폴링해야 한다.
- *
- * 예전에는 읽기를 브라우저가 직접 했다. 전면 HTMX로 옮기면서 둘 다 이리로 왔고,
- * 그래서 DoltHub의 CORS 동작에 기대는 부분이 아예 사라졌다.
+ * Reads are a plain GET. Writes queue an operation and must be polled until it
+ * finishes. Both live here, so nothing depends on DoltHub's CORS behaviour.
  */
 
 import type { Check, Habit, State } from "./model";
@@ -15,7 +12,7 @@ const API = "https://www.dolthub.com/api/v1alpha1";
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 25_000;
 
-/** 새 DoltHub DB를 초기화하는 스키마. */
+/** Schema for a fresh DoltHub DB. */
 export const SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS habits (
   id VARCHAR(36) NOT NULL PRIMARY KEY,
   name VARCHAR(200) NOT NULL,
@@ -32,9 +29,9 @@ CREATE TABLE IF NOT EXISTS checks (
   PRIMARY KEY (habit_id, check_date)
 );`;
 
-/** DB가 지금 어떤 모양인지. 읽기만으로 알아낸다 — 토큰이 필요 없다. */
+/** What the DB looks like right now. Reads only — no token needed. */
 export interface Shape {
-  /** 브랜치가 있는가. 커밋이 하나도 없는 DoltHub DB에는 main조차 없다. */
+  /** A DoltHub DB with zero commits has no main branch at all. */
   branch: boolean;
   habits: boolean;
   checks: boolean;
@@ -49,7 +46,7 @@ interface QueryResponse {
 
 const str = (v: unknown): string => (v == null ? "" : String(v));
 
-/** 읽기 SQL을 던진다. db는 "owner/name" 형식이다. */
+/** Runs a read query. db is "owner/name". */
 async function query(db: string, branch: string, q: string): Promise<QueryResponse> {
   const [owner, name] = db.split("/");
   if (!owner || !name) {
@@ -78,11 +75,7 @@ async function query(db: string, branch: string, q: string): Promise<QueryRespon
   return body;
 }
 
-/**
- * pull은 습관과 기록을 통째로 읽어 온다.
- *
- * 두 질의를 나란히 던진다. 하나에 ~0.9초가 걸리므로 줄세우면 그대로 두 배가 된다.
- */
+/** Reads habits and checks. Queried in parallel — each takes ~0.9s. */
 export async function pull(db: string, branch: string): Promise<State> {
   const [habitRes, checkRes] = await Promise.all([
     query(db, branch, "SELECT id, name, description, color, created_at, archived FROM habits ORDER BY created_at"),
@@ -96,7 +89,7 @@ export async function pull(db: string, branch: string): Promise<State> {
       description: str(r["description"]),
       color: str(r["color"]) || "#f97316",
       created_at: str(r["created_at"]),
-      // DoltHub는 BOOLEAN을 0/1이나 "0"/"1"로 돌려준다.
+      // DoltHub returns BOOLEAN as 0/1 or "0"/"1".
       archived: r["archived"] === true || r["archived"] === 1 || r["archived"] === "1",
     }))
     .filter((h) => h.id !== "" && !h.archived);
@@ -104,7 +97,7 @@ export async function pull(db: string, branch: string): Promise<State> {
   const checks: Check[] = (checkRes.rows ?? [])
     .map((r) => ({
       habit_id: str(r["habit_id"]),
-      // DATE 컬럼이 "2026-08-21 00:00:00" 같은 형태로 올 수 있다.
+      // A DATE column may arrive as "2026-08-21 00:00:00".
       date: str(r["check_date"]).slice(0, 10),
       note: str(r["note"]),
     }))
@@ -113,21 +106,19 @@ export async function pull(db: string, branch: string): Promise<State> {
   return { habits, checks };
 }
 
-// ── 쓰기 ───────────────────────────────────────────────
+// ── Writes ────────────────────────────────────────────
 
 /**
- * inspect는 DB의 모양을 읽어 온다.
- *
- * SHOW TABLES의 행 키는 `Tables_in_<db>`라 DB마다 다르다. 그래서 키를 찾지 않고
- * 값 하나를 꺼낸다. SHOW COLUMNS는 테이블이 없으면 던지므로 있을 때만 부른다.
+ * SHOW TABLES keys its rows `Tables_in_<db>`, which differs per DB, so take the
+ * value rather than look up a key. SHOW COLUMNS throws when the table is absent.
  */
 export async function inspect(db: string, branch: string): Promise<Shape> {
   let res: QueryResponse;
   try {
     res = await query(db, branch, "SHOW TABLES");
   } catch (err) {
-    // 방금 만든 DB다. 커밋이 없으니 브랜치도 없고, 읽을 것이 하나도 없다.
-    // 이것은 고장이 아니라 시작점이라, 오류 화면 대신 준비 안내로 보낸다.
+    // A brand-new DB: no commits, so no branch and nothing to read. That is a
+    // starting point, not a fault — the caller shows setup, not an error.
     if (!isBranchMissing(err)) throw err;
     return { branch: false, habits: false, checks: false, description: false };
   }
@@ -152,10 +143,8 @@ export async function inspect(db: string, branch: string): Promise<Shape> {
 }
 
 /**
- * 브랜치가 없다는 DoltHub의 대답인지 본다.
- *
- * 문자열을 보고 판단하는 것은 무르지만, 이 상태를 다른 오류와 구별할 방법이
- * API에 없다. 못 알아보면 예전처럼 오류 화면으로 떨어질 뿐이라 손해가 없다.
+ * Matching on the message is brittle, but the API offers no other way to tell
+ * this state apart. A miss just falls through to the error screen.
  */
 export function isBranchMissing(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -163,11 +152,9 @@ export function isBranchMissing(err: unknown): boolean {
 }
 
 /**
- * migrations는 이 모양을 지금 스키마로 끌어올릴 문장을 만든다.
- *
- * 부족한 것만 낸다. ALTER ADD COLUMN은 이미 있으면 에러라서, 멱등성은
- * "실행 직전에 다시 들여다본다"로 지킨다 — 화면이 알려 준 상태를 믿지 않는다.
- * 새로 만드는 테이블에는 description이 처음부터 들어 있다.
+ * Statements that bring this shape up to the current schema — only what is
+ * missing. ALTER ADD COLUMN errors if the column exists, so idempotence comes
+ * from inspecting again right before running, never from client-reported state.
  */
 export function migrations(shape: Shape): string[] {
   const out: string[] = [];
@@ -198,7 +185,7 @@ const CREATE_CHECKS = `CREATE TABLE checks (
   PRIMARY KEY (habit_id, check_date)
 );`;
 
-// AFTER 절은 Dolt 파서가 받지 않는다. 컬럼 위치는 지정하지 않는다.
+// Dolt's parser rejects an AFTER clause, so column position is left unset.
 const ADD_DESCRIPTION = `ALTER TABLE habits ADD COLUMN description VARCHAR(2000) NOT NULL DEFAULT '';`;
 
 async function doltFetch(url: string, token: string, method: "GET" | "POST"): Promise<any> {
@@ -217,13 +204,10 @@ async function doltFetch(url: string, token: string, method: "GET" | "POST"): Pr
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * runStatement는 문장 하나를 반영한다.
+ * Applies one statement. The write endpoint is async: queue, then poll. A real
+ * round trip is ~1.5-2s; POLL_TIMEOUT_MS is the pathological ceiling.
  *
- * 쓰기 엔드포인트는 비동기다. 작업을 걸고 끝날 때까지 기다린다.
- * 실제 왕복은 대략 1.5~2초이고, POLL_TIMEOUT_MS는 그게 아니라 병리적 상황의 상한이다.
- *
- * 주의: DoltHub는 0건에 영향을 준 문장에도 커밋을 만든다. 조건에 맞는 행이
- * 없더라도 히스토리에는 빈 커밋이 남는다.
+ * Note: DoltHub commits even when a statement affects zero rows.
  */
 async function runStatement(
   token: string,
@@ -257,7 +241,7 @@ async function runStatement(
   throw new Error(`작업이 ${POLL_TIMEOUT_MS / 1000}초 안에 끝나지 않았습니다`);
 }
 
-/** 문장들을 차례로 반영한다. 하나라도 실패하면 거기서 멈추고 던진다. */
+/** Applies statements in order, stopping at the first failure. */
 export async function write(
   token: string,
   db: string,
@@ -269,7 +253,7 @@ export async function write(
   }
 }
 
-// ── SQL 만들기 ─────────────────────────────────────────
+// ── SQL builders ──────────────────────────────────────
 
 export function upsertHabit(h: Habit): string {
   return (
@@ -281,10 +265,8 @@ export function upsertHabit(h: Habit): string {
 }
 
 /**
- * updateHabit은 이름과 설명만 고친다.
- *
- * upsertHabit으로도 되지만 그러려면 created_at까지 들고 와야 하고, 그 값이
- * 어긋나면 만든 날짜가 조용히 바뀐다. 고칠 것만 건드리는 문장을 따로 둔다.
+ * Name and description only. upsertHabit would work but needs created_at, and a
+ * stale value there silently rewrites when the habit was made.
  */
 export function updateHabit(id: string, name: string, description: string): string {
   return (
@@ -294,11 +276,8 @@ export function updateHabit(id: string, name: string, description: string): stri
 }
 
 /**
- * deleteHabit은 습관과 그 기록을 지우는 문장들을 만든다.
- *
- * 반드시 문장을 나눠서 돌려준다. DoltHub 쓰기 엔드포인트는 한 요청에
- * 문장 하나만 받는다 — 두 개를 세미콜론으로 이어 보내면
- * "Error parsing SQL: syntax error" 로 통째로 거부당한다.
+ * Split into separate statements on purpose: the write endpoint takes one per
+ * request, and two joined by a semicolon are rejected as a syntax error.
  */
 export function deleteHabit(id: string): string[] {
   return [

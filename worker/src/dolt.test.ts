@@ -1,8 +1,7 @@
 /**
- * dolt.ts가 만드는 SQL 문장을 확인한다.
- *
- * 여기 있는 함수만 네트워크가 없다. 값이 그대로 문장에 박히므로,
- * 따옴표와 줄바꿈이 든 설명이 문장을 깨뜨리지 않는지가 요점이다.
+ * The SQL dolt.ts builds. These are the only functions without network access.
+ * Values are inlined into the statement, so the point is that quotes and
+ * newlines in a description do not break it.
  */
 
 import { describe, expect, it } from "vitest";

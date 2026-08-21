@@ -1,24 +1,23 @@
 {
-  // habit-chain: 화면(HTML 조각)과 DoltHub 읽기·쓰기를 한 곳에서 다 한다.
+  // habit-chain: rendering and DoltHub reads/writes in one place.
   //
-  // Pages advanced mode다. 빌드 산출물의 _worker.js 하나가 모든 요청을 먼저 받고,
-  // 자기가 모르는 경로만 env.ASSETS로 넘긴다. Worker + Static Assets 때 필요했던
-  // run_worker_first 목록이 여기서는 통째로 사라진다.
+  // Pages advanced mode. The built _worker.js takes every request first and
+  // hands off only unknown paths to env.ASSETS, which removes the
+  // run_worker_first list that Worker + Static Assets needed.
   //
-  // Worker가 아니라 Pages인 이유는 도메인이다. chain.benelog.net의 DNS는 Netlify에
-  // 있는데, Workers 커스텀 도메인은 Cloudflare 존을 요구한다. Pages는 서브도메인이면
-  // 외부 DNS에 CNAME 한 줄로 붙는다.
+  // Pages rather than Workers because of DNS: chain.benelog.net is served from
+  // Netlify, and a Workers custom domain requires a Cloudflare zone. Pages
+  // attaches to an external subdomain with one CNAME.
   //
-  // 빌드: npm run build
-  // 배포: npm run deploy
+  // Build: npm run build. Deploy: npm run deploy.
   //
-  // 시크릿은 없다. DoltHub DB와 토큰은 사용자가 설정에 넣고, 요청마다 헤더로 온다.
+  // No secrets — the DoltHub DB and token come from user settings as headers.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "habit-chain",
   "pages_build_output_dir": "dist",
   "compatibility_date": "2026-08-01",
   "vars": {
-    // 서버가 아는 것은 브랜치 하나뿐이다. DB는 사용자가 설정에 넣고 헤더로 보낸다.
+    // The branch is all the server knows; the DB arrives as a header.
     "DOLT_BRANCH": "main"
   }
 }

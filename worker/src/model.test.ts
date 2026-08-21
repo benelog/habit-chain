@@ -20,7 +20,7 @@ describe("compute", () => {
       total: 3,
     },
     {
-      // 오늘 아직 안 했어도 어제까지 이어졌으면 사슬은 살아 있다
+      // An unchecked today is fine as long as yesterday is filled.
       name: "어제까지 이어짐",
       dates: ["2026-08-19", "2026-08-20"],
       today: "2026-08-21",
@@ -101,7 +101,7 @@ describe("날짜 계산", () => {
     expect(addDays("2026-01-01", -1)).toBe("2025-12-31");
   });
 
-  // 서머타임 전환일. 로컬 시간으로 계산하면 하루가 사라지거나 겹친다.
+  // A DST transition: local-time math loses or repeats a day here.
   it("서머타임 전환일을 넘어가도 하루씩 간다", () => {
     expect(addDays("2026-03-08", 1)).toBe("2026-03-09"); // 미국 DST 시작
     expect(addDays("2026-11-01", 1)).toBe("2026-11-02"); // 미국 DST 종료
@@ -138,8 +138,8 @@ describe("SQL 만들기", () => {
   it("습관 삭제는 문장을 나눠서 낸다", async () => {
     const { deleteHabit } = await import("./dolt");
     const stmts = deleteHabit("h1");
-    // DoltHub 쓰기 엔드포인트는 한 요청에 문장 하나만 받는다.
-    // 세미콜론으로 이으면 "Error parsing SQL"로 거부당한다.
+    // The write endpoint takes one statement per request; joining them
+    // with a semicolon is rejected as a parse error.
     expect(stmts).toHaveLength(2);
     for (const s of stmts) {
       expect(s.replace(/;$/, "")).not.toContain(";");

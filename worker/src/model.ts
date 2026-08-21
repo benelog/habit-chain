@@ -1,16 +1,14 @@
 /**
- * habit-chain의 도메인 타입과 사슬 계산.
- *
- * 이 파일에는 네트워크도 DOM도 없다. 순수 함수뿐이라 vitest로 그냥 돈다.
+ * Domain types and chain math. No network, no DOM — pure functions only.
  */
 
-/** 앱 전체가 쓰는 날짜 표기. 사용자의 로컬 날짜를 이 형식으로 담는다. */
+/** The app's date format, holding the user's local date. */
 export type DateStr = string; // YYYY-MM-DD
 
 export interface Habit {
   id: string;
   name: string;
-  /** 여러 줄 평문. 습관을 왜/어떻게 하는지 적어 두는 자리다. */
+  /** Multiline plain text. */
   description: string;
   color: string;
   created_at: string; // RFC3339
@@ -28,73 +26,69 @@ export interface State {
   checks: Check[];
 }
 
-/** 하나의 습관에 대한 사슬 지표. */
+/** Chain metrics for one habit. */
 export interface Stats {
-  current: number; // 오늘(또는 어제)까지 이어진 연속 일수
-  longest: number; // 역대 최장 연속 일수
-  total: number; // 전체 체크 수
-  rate30: number; // 최근 30일 달성률(%)
+  current: number; // days running up to today (or yesterday)
+  longest: number; // longest run ever
+  total: number; // total checks
+  rate30: number; // last-30-day completion (%)
 }
 
-// ── 날짜 계산 ──────────────────────────────────────────
+// ── Dates ─────────────────────────────────────────────
 //
-// 전부 UTC 자정으로 환산해서 센다. 서버에는 사용자의 시간대가 없고,
-// UTC에는 서머타임이 없어 "하루 더하기"가 언제나 정확히 86400초다.
-// 로컬 시간으로 계산하면 서머타임이 있는 지역에서 하루가 사라지거나 겹친다.
+// Everything is counted at UTC midnight. The server has no user timezone, and
+// UTC has no DST, so "add a day" is always exactly 86400s. Local-time math
+// loses or repeats a day wherever DST applies.
 
 const DAY_MS = 86_400_000;
 
-/** "YYYY-MM-DD"를 UTC 자정의 epoch 밀리초로 바꾼다. */
+/** "YYYY-MM-DD" → epoch ms at UTC midnight. */
 export function toEpoch(d: DateStr): number {
   return Date.parse(`${d}T00:00:00Z`);
 }
 
-/** epoch 밀리초를 "YYYY-MM-DD"로 되돌린다. */
+/** epoch ms → "YYYY-MM-DD". */
 export function toDateStr(ms: number): DateStr {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** 날짜에 n일을 더한다. n이 음수면 뺀다. */
+/** Adds n days; negative subtracts. */
 export function addDays(d: DateStr, n: number): DateStr {
   return toDateStr(toEpoch(d) + n * DAY_MS);
 }
 
-/** 날짜의 요일. 0이 일요일이다. */
+/** Day of week, 0 = Sunday. */
 export function dayOfWeek(d: DateStr): number {
   return new Date(toEpoch(d)).getUTCDay();
 }
 
-/** "YYYY-MM-DD" 형식인지 본다. 클라이언트가 보낸 날짜를 그대로 믿지 않기 위해서다. */
+/** Client-sent dates are not trusted. */
 export function isDateStr(s: unknown): s is DateStr {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(toEpoch(s));
 }
 
-// ── 사용자가 넣는 값 ───────────────────────────────────
+// ── User-supplied values ──────────────────────────────
 //
-// DB 이름과 토큰은 브라우저의 설정에서 와서 헤더에 실린다. 둘 다 그대로 믿지 않는다.
+// DB name and token come from browser settings via headers. Neither is trusted.
 
-/** "owner/name" 형식인지 본다. DoltHub의 이름에 쓰이는 글자만 받는다. */
+/** "owner/name", restricted to characters DoltHub names use. */
 export function isDbName(s: unknown): s is string {
   return typeof s === "string" && /^[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/.test(s);
 }
 
 /**
- * 토큰으로 쓸 수 있는 글자인지 본다.
- *
- * 값이 맞는지는 DoltHub만 안다. 여기서 보는 것은 이 문자열이 HTTP 헤더에
- * 들어가도 되는지다 — 줄바꿈이 섞여 들어오면 요청 자체가 조작된다.
+ * Checks the token is header-safe, not that it is valid — only DoltHub knows
+ * that. A newline slipping in would forge the request.
  */
 export function isToken(s: unknown): s is string {
   return typeof s === "string" && /^[\x21-\x7e]{8,256}$/.test(s);
 }
 
-// ── 사슬 계산 ──────────────────────────────────────────
+// ── Chain math ────────────────────────────────────────
 
 /**
- * compute는 today를 기준으로 사슬 지표를 낸다.
- *
- * 오늘 아직 체크하지 않았어도 어제까지 이어져 있으면 사슬은 살아 있는 것으로 본다.
- * 하루를 통째로 놓쳐야 끊어진다 — 이게 don't break the chain의 규칙이다.
+ * The chain survives an unchecked today as long as yesterday is filled; only a
+ * whole missed day breaks it. That is the don't-break-the-chain rule.
  */
 export function compute(dates: DateStr[], today: DateStr): Stats {
   if (dates.length === 0) {
@@ -104,7 +98,7 @@ export function compute(dates: DateStr[], today: DateStr): Stats {
   const set = new Set(dates);
   const sorted = [...set].sort();
 
-  // 최장 연속: 정렬된 날짜를 훑으며 하루 간격이 유지되는 구간을 잰다.
+  // Longest run: walk sorted dates, measuring day-apart stretches.
   let longest = 0;
   let run = 0;
   let prev = 0;
@@ -116,7 +110,7 @@ export function compute(dates: DateStr[], today: DateStr): Stats {
     prev = t;
   }
 
-  // 현재 연속: 오늘부터 거꾸로 센다. 오늘이 비었으면 어제부터 시작.
+  // Current run: count backwards, starting at yesterday if today is empty.
   let cursor = set.has(today) ? today : addDays(today, -1);
   let current = 0;
   while (set.has(cursor)) {
@@ -124,7 +118,6 @@ export function compute(dates: DateStr[], today: DateStr): Stats {
     cursor = addDays(cursor, -1);
   }
 
-  // 최근 30일 달성률.
   let hit = 0;
   for (let i = 0; i < 30; i++) {
     if (set.has(addDays(today, -i))) hit++;
@@ -133,19 +126,19 @@ export function compute(dates: DateStr[], today: DateStr): Stats {
   return { current, longest, total: set.size, rate30: Math.floor((hit * 100) / 30) };
 }
 
-/** 한 습관의 체크 날짜만 뽑는다. */
+/** Check dates for one habit. */
 export function datesOf(state: State, habitID: string): DateStr[] {
   return state.checks.filter((c) => c.habit_id === habitID).map((c) => c.date);
 }
 
-/** (habit_id, date) 조회를 위한 집합을 만든다. */
+/** Set for (habit_id, date) lookups. */
 export function checkSet(state: State): Set<string> {
   return new Set(state.checks.map((c) => `${c.habit_id}|${c.date}`));
 }
 
-// ── SQL ────────────────────────────────────────────────
+// ── SQL ───────────────────────────────────────────────
 
-/** 문자열 리터럴을 SQL에 넣을 수 있게 감싼다. */
+/** Quotes a string literal for SQL. */
 export function sqlEscape(s: string): string {
   return `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
 }

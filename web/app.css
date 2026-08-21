@@ -1,13 +1,13 @@
 /*
- * habit-chain 스타일.
+ * habit-chain styles.
  *
- * 원칙 하나: 껍데기는 무채색으로 두고 색은 사슬만 갖는다.
- * 습관 색은 사용자가 고른 값이라, UI가 색을 쓰면 둘이 서로 싸운다.
- * 유일한 예외가 --break — 사슬이 끊긴 자리에만 쓰는 빨강이다.
+ * One rule: the shell is greyscale and only chains carry colour. Habit colours
+ * are the user's, so UI colour would fight them. The lone exception is --break,
+ * a red used only where a chain snapped.
  */
 
 :root {
-  /* 따뜻한 흑연. 파란기 도는 near-black을 일부러 피했다. */
+  /* Warm graphite. A blue-leaning near-black was deliberately avoided. */
   --bg: #131211;
   --panel: #1b1a18;
   --panel-2: #232120;
@@ -22,7 +22,7 @@
   --cell: 40px;
   --gap: 5px;
 
-  /* 한글은 시스템 폰트로 두고 라틴·숫자만 Archivo가 받는다. */
+  /* Hangul stays on the system font; Archivo takes only Latin and digits. */
   --sans: "Archivo", "Pretendard Variable", "Pretendard", ui-sans-serif, system-ui,
           -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
@@ -65,7 +65,7 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
   outline-offset: 2px;
 }
 
-/* ── 상단 바 ──────────────────────────────────────── */
+/* ── Top bar ──────────────────────────────────────── */
 .topbar {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
@@ -83,7 +83,7 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 }
 .wordmark svg { color: var(--text); flex: none; }
 
-/* 쓰기가 1.5~2초 걸린다. 그동안 뭔가 돌고 있다는 걸 알려 준다. */
+/* A write takes 1.5-2s; this shows something is happening meanwhile. */
 #progress {
   position: fixed; top: 0; left: 0; right: 0; height: 2px;
   overflow: hidden; z-index: 20; pointer-events: none;
@@ -100,7 +100,7 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
   100% { transform: translateX(360%); }
 }
 
-/* ── 버튼 ─────────────────────────────────────────── */
+/* ── Buttons ──────────────────────────────────────── */
 button {
   font: inherit; cursor: pointer; border-radius: 10px;
   border: 1px solid var(--line); padding: 9px 14px;
@@ -129,7 +129,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .icon-btn:hover { color: var(--text); }
 
-/* ── 오늘 ─────────────────────────────────────────── */
+/* ── Today ────────────────────────────────────────── */
 .day {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 12px; flex-wrap: wrap;
@@ -152,7 +152,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .day.all-done .day-count b { color: var(--text); }
 
-/* ── 습관 카드 ────────────────────────────────────── */
+/* ── Habit cards ──────────────────────────────────── */
 .habits { display: grid; gap: 12px; }
 
 .card {
@@ -171,7 +171,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   font-weight: 600; overflow-wrap: anywhere;
 }
 
-/* 연속 일수. 폭이 넓어진 숫자가 "늘어나는 중"을 그대로 보여 준다. */
+/* Streak days. The widening figure shows the run growing. */
 .streak { display: flex; align-items: baseline; gap: 7px; margin: 0; }
 .streak b {
   font-size: 32px; line-height: .9; color: var(--habit);
@@ -193,14 +193,14 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 .del-btn { opacity: .45; }
 .card:hover .del-btn, .del-btn:focus-visible { opacity: 1; }
 
-/* 설명. 사용자가 적은 줄바꿈을 그대로 살린다 — <br>로 바꾸지 않는 이유다. */
+/* Description. Keeps the user's newlines, which is why they stay as text. */
 .card-desc {
   margin: 11px 0 0; font-size: 13px; line-height: 1.65;
   color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 
-/* ── 카드 안에서 고치기 ───────────────────────────
-   폼은 카드마다 접힌 채로 함께 나온다. 여는 것은 클래스 하나라 왕복이 없다. */
+/* ── Editing inside the card ──────────────────────
+   The form ships folded in every card, so opening is one class, no round trip. */
 .card-edit { display: none; }
 .card.editing .card-edit { display: block; margin-bottom: 4px; }
 .card.editing .card-head, .card.editing .card-desc { display: none; }
@@ -219,7 +219,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   margin-top: 16px;
 }
 
-/* ── 사슬 그리드 ──────────────────────────────────── */
+/* ── Chain grid ───────────────────────────────────── */
 .grid {
   flex: 1 1 300px; max-width: 430px;
   display: grid;
@@ -232,7 +232,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   letter-spacing: .06em; padding-bottom: 3px;
 }
 .dow.sun { color: color-mix(in oklab, var(--break) 60%, var(--muted)); }
-/* 주가 세로로 흐르니 달 이름은 왼쪽 여백에 붙는다. */
+/* Weeks run downward, so month labels sit in the left gutter. */
 .mon {
   font-size: 10.5px; color: var(--text); white-space: nowrap;
   letter-spacing: -.02em; opacity: .72;
@@ -251,9 +251,9 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   transition: background .14s ease, border-color .14s ease, color .14s ease, transform .08s ease;
 }
 
-/* 칸 안의 날짜. 사슬 모양만으로는 "언제 체크했는지"를 셀 수가 없다.
-   연결부는 칸 바깥(gap)에 그려지니 숫자가 들어가도 사슬은 그대로다.
-   끊긴 칸의 빗금(::after)이 위를 지나가므로 숫자를 한 겹 올려 둔다. */
+/* Dates in cells: chain shape alone cannot say which day was checked. Links
+   are drawn in the gaps, so the numbers leave the chain intact. A broken cell's
+   slash (::after) crosses them, so the number is raised one layer. */
 .cell > span {
   position: relative; z-index: 1;
   font-size: 10.5px; line-height: 1;
@@ -262,7 +262,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   letter-spacing: -.02em;
   pointer-events: none;
 }
-/* 1일은 "8/1"로 적는다. 그 한 칸이 그리드 안에서 달의 경계가 된다. */
+/* The 1st reads "8/1" — that cell marks the month boundary in the grid. */
 .cell.first > span { font-size: 9px; font-variation-settings: "wdth" 88, "wght" 650; letter-spacing: -.04em; }
 .cell:hover { border-color: var(--habit); }
 .cell.future {
@@ -270,25 +270,25 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   color: color-mix(in oklab, var(--muted) 42%, transparent);
   cursor: default; pointer-events: none;
 }
-/* 채운 칸의 숫자는 사슬 위에 얹힌다. 습관 색이 무엇이든 읽히도록 그 색을 어둡게 깐다. */
+/* Numbers on filled cells sit on the chain, darkened to stay readable. */
 .cell.done {
   background: var(--habit); border-color: transparent;
   color: color-mix(in oklab, var(--habit) 16%, #000);
 }
 .cell.done > span { font-variation-settings: "wdth" 96, "wght" 650; }
-/* 오늘은 아직 안 채웠을 때만 표시한다. 채운 뒤에도 테를 두르면 그 테가
-   사슬 연결부를 가로질러, 이어져 있는 날이 끊긴 것처럼 보인다.
-   이미 채웠다면 오늘이 어디인지는 알 필요도 없다 — 그게 마지막 칸이다. */
+/* Today is marked only while unfilled. A ring kept after filling would cross
+   the chain link and make a connected day look broken — and once filled, today
+   needs no marker: it is the last cell. */
 .cell.today:not(.done) { box-shadow: inset 0 0 0 2px var(--habit); }
-/* 오늘 칸의 숫자만은 채웠든 아니든 굵다. 날짜를 셀 때 기준점이 되는 칸이다. */
+/* Today's number stays bold either way — it is the reference point. */
 .cell.today { color: var(--text); }
 .cell.today.done { color: color-mix(in oklab, var(--habit) 12%, #000); }
 .cell.today > span { font-variation-settings: "wdth" 104, "wght" 750; }
-/* 요청 중인 칸. hx-disabled-elt이 끈 그 칸이 방금 눌린 칸이다. */
+/* The in-flight cell: whatever hx-disabled-elt turned off was just pressed. */
 .card.htmx-request .cell[disabled]:not(.future) { animation: cellwait .8s ease-in-out infinite; }
 @keyframes cellwait { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 
-/* 사슬 연결부. 붙어 있는 날은 하나로 이어 붙인다. */
+/* Chain links, joining adjacent days into one. */
 .cell.done.link-l::before,
 .cell.done.link-r::after,
 .cell.done.wrap-l::before,
@@ -298,7 +298,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .cell.done.link-l::before { right: 100%; width: calc(var(--gap) + 2px); }
 .cell.done.link-r::after { left: 100%; width: calc(var(--gap) + 2px); }
-/* 토요일→일요일. 줄이 바뀌어도 사슬은 끊긴 게 아니라는 표시. */
+/* Saturday to Sunday: a row change is not a break. */
 .cell.done.wrap-r::after {
   left: 100%; width: 9px; border-radius: 0 3px 3px 0;
   -webkit-mask-image: linear-gradient(90deg, #000 55%, transparent);
@@ -310,7 +310,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   mask-image: linear-gradient(270deg, #000 55%, transparent);
 }
 
-/* 사슬이 마지막으로 끊긴 자리. 카드마다 많아야 하나다. */
+/* Where the chain last broke — at most one per card. */
 .cell.broke::after {
   content: ""; position: absolute; inset: 0;
   border-radius: inherit;
@@ -320,7 +320,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   opacity: .8;
 }
 
-/* ── 카드 지표 ────────────────────────────────────── */
+/* ── Card stats ───────────────────────────────────── */
 .card-stats {
   margin: 0; flex: 1 1 130px; min-width: 118px;
   display: flex; flex-direction: column; gap: 11px;
@@ -334,7 +334,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .card-stats small { font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 2px; }
 
-/* ── 빈 상태 · 오류 ───────────────────────────────── */
+/* ── Empty states and errors ──────────────────────── */
 .empty {
   text-align: center; padding: 44px 20px; color: var(--muted);
   border: 1px dashed var(--line); border-radius: var(--radius);
@@ -343,7 +343,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 .empty p { margin: 0 0 4px; font-size: 13.5px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; margin-top: 16px; }
 
-/* 설정이 비었을 때의 첫 화면. 빈 목록과 같은 껍데기를 쓰되 할 일을 순서로 세운다. */
+/* First screen with empty settings: the empty-list shell, plus ordered steps. */
 .empty.setup { text-align: left; padding: 30px 24px; }
 .empty.setup h2 { text-align: center; }
 .empty.setup > p { margin: 0 auto; max-width: 42ch; }
@@ -362,7 +362,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   font-size: 12.5px; opacity: .85;
 }
 
-/* 설정이 비었을 때는 습관을 더할 수도 없다. 눌러 봐야 토스트만 뜨는 폼은 숨긴다. */
+/* Nothing can be added yet, so hide a form that would only raise a toast. */
 #habits:has(.setup) ~ .add-form { display: none; }
 .chip {
   font-size: 12.5px; font-weight: 500; padding: 6px 11px; border-radius: 999px;
@@ -370,7 +370,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .chip:hover { color: var(--text); }
 
-/* ── 뼈대 (첫 로딩) ───────────────────────────────── */
+/* ── Skeleton (first load) ────────────────────────── */
 .sk { display: grid; gap: 12px; }
 .sk div {
   height: 172px; border-radius: var(--radius);
@@ -388,7 +388,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   100% { transform: translateX(100%); }
 }
 
-/* ── 추가 폼 ──────────────────────────────────────── */
+/* ── Add form ─────────────────────────────────────── */
 .add-form {
   margin-top: 16px;
   background: var(--panel); border: 1px solid var(--line);
@@ -401,7 +401,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   font: inherit; font-size: 15px; padding: 3px 1px; outline: none;
 }
 .add-form input[type=text]::placeholder { color: var(--muted); }
-/* 설명은 선택이라 눈에 덜 띄게 둔다. 이름 칸과 같은 자리에서 아래로만 자란다. */
+/* The description is optional, so it stays quiet and grows downward only. */
 .add-form textarea {
   width: 100%; background: transparent; border: 0; color: var(--text);
   font: inherit; font-size: 13.5px; padding: 3px 1px; outline: none;
@@ -410,8 +410,8 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 .add-form textarea::placeholder { color: var(--muted); }
 .add-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
-/* 네이티브 색 선택기 대신 고른 색만 내놓는다. 습관 색은 8개면 충분하고,
-   그래야 화면 전체의 색이 서로 어울린다. */
+/* A fixed set instead of the native colour picker: eight is enough, and it
+   keeps every colour on screen in agreement. */
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
 .swatches label { display: block; margin: 0; line-height: 0; }
 .swatches input { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -427,7 +427,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .swatches input:focus-visible + span { outline: 2px solid var(--text); outline-offset: 3px; }
 
-/* ── 토스트 ───────────────────────────────────────── */
+/* ── Toast ────────────────────────────────────────── */
 #toast {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: calc(18px + env(safe-area-inset-bottom));
@@ -448,7 +448,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 .toast button { border: 0; background: transparent; color: var(--muted); padding: 0 4px; }
 @keyframes rise { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
 
-/* ── 다이얼로그 ───────────────────────────────────── */
+/* ── Dialogs ──────────────────────────────────────── */
 dialog {
   border: 1px solid var(--line); border-radius: 16px; padding: 0;
   background: var(--panel); color: var(--text);
@@ -472,7 +472,7 @@ legend { font-size: 12.5px; font-weight: 650; color: var(--text); padding: 0; }
   font-size: 11.5px; background: var(--panel-2); border-radius: 5px;
   padding: 1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-/* 링크도 무채색이다. 브라우저 기본 파랑은 이 껍데기에서 유일하게 튀는 색이 된다. */
+/* Links are greyscale too; the browser's blue would be the one loud colour. */
 .hint a, .empty a { color: var(--text); text-decoration-color: var(--muted); text-underline-offset: 2px; }
 .hint a:hover, .empty a:hover { text-decoration-color: var(--text); }
 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
@@ -484,7 +484,7 @@ label input[type=password], label input[type=text] {
 label input:focus { border-color: var(--muted); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 
-/* 저장 버튼을 눌렀을 때의 한 줄. 자리는 늘 잡아 두어 눌러도 화면이 뛰지 않는다. */
+/* The line shown after saving. Its space is always reserved so nothing jumps. */
 .set-status {
   margin: 8px 0 0; min-height: 1.4em;
   font-size: 12px; color: var(--muted);
@@ -496,7 +496,7 @@ label input:focus { border-color: var(--muted); }
 .confirm p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.6; }
 .confirm-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
-/* ── 좁은 화면 ────────────────────────────────────── */
+/* ── Narrow screens ───────────────────────────────── */
 @media (max-width: 480px) {
   :root { --gap: 4px; --gutter: 28px; }
   #app { padding: 0 12px 56px; }
