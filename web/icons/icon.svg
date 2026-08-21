@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Habit Chain">
+  <rect width="512" height="512" rx="112" fill="#0e0f13"/>
+  <g fill="#f97316">
+    <rect x="72"  y="216" width="80" height="80" rx="22"/>
+    <rect x="184" y="216" width="80" height="80" rx="22"/>
+    <rect x="296" y="216" width="80" height="80" rx="22"/>
+    <rect x="152" y="243" width="32" height="26"/>
+    <rect x="264" y="243" width="32" height="26"/>
+  </g>
+  <rect x="408" y="216" width="80" height="80" rx="22" fill="none" stroke="#2a2e3d" stroke-width="10" stroke-dasharray="18 14"/>
+</svg>

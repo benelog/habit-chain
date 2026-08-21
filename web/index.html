@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Habit Chain — 끊지 말 것</title>
+<meta name="description" content="Don't break the chain. 매일 이어붙인 사슬을 눈으로 확인하는 습관 추적기.">
+<meta name="theme-color" content="#0e0f13">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <div class="boot-chain"><i></i><i></i><i></i><i></i><i></i></div>
+  <p>불러오는 중…</p>
+</div>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <h1><span class="logo">⛓</span> Habit&nbsp;Chain</h1>
+    <div class="topbar-actions">
+      <span id="sync-badge" class="badge" title="동기화 상태">로컬</span>
+      <button id="btn-settings" class="icon-btn" aria-label="설정" title="설정">⚙</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="habits" class="habits" aria-live="polite"></section>
+
+    <form id="add-form" class="add-form" autocomplete="off">
+      <input id="add-name" type="text" placeholder="새 습관 (예: 아침 30분 달리기)" maxlength="60" required>
+      <input id="add-color" type="color" value="#f97316" aria-label="색상">
+      <button type="submit">추가</button>
+    </form>
+  </main>
+
+  <dialog id="settings">
+    <form method="dialog" class="settings-head">
+      <h2>설정</h2>
+      <button value="close" class="icon-btn" aria-label="닫기">✕</button>
+    </form>
+
+    <div class="settings-body">
+      <fieldset>
+        <legend>DoltHub 저장소</legend>
+        <p class="hint">사용자별 데이터는 각자의 DoltHub DB로 나뉩니다. 여기에 자기 DB 이름을 넣으세요.</p>
+        <label>DB 이름
+          <input id="set-db" type="text" placeholder="benelog/habit-chain" spellcheck="false">
+        </label>
+        <label>브랜치
+          <input id="set-branch" type="text" placeholder="main" spellcheck="false">
+        </label>
+        <div class="row">
+          <button id="btn-pull" type="button" class="secondary">DoltHub에서 불러오기</button>
+          <button id="btn-schema" type="button" class="ghost">스키마 SQL 복사</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>쓰기 서버 <span class="tag">선택</span></legend>
+        <p class="hint">
+          브라우저는 DoltHub에 직접 쓸 수 없습니다 — 쓰기 API가 CORS preflight를 막습니다.
+          그 일을 대신하는 Cloudflare Worker 주소를 넣으면 자동으로 반영됩니다.
+          앱이 Worker에서 서빙되고 있다면 비워두세요. 같은 주소의 <code>/api/write</code>를 씁니다.
+          서버가 없어도 앱은 로컬에서 그대로 동작하고, 아래 버튼으로 SQL을 복사해 직접 반영할 수 있습니다.
+        </p>
+        <label>쓰기 서버 주소
+          <input id="set-write-url" type="text" placeholder="https://habit-chain.<계정>.workers.dev/api/write" spellcheck="false">
+        </label>
+        <label>쓰기 키
+          <input id="set-write-key" type="password" placeholder="Worker의 WRITE_KEY (이 브라우저에만 저장)" spellcheck="false">
+        </label>
+        <label class="check">
+          <input id="set-auto" type="checkbox">
+          <span>기록할 때마다 자동으로 밀어넣기</span>
+        </label>
+        <div class="row">
+          <button id="btn-push" type="button" class="secondary">지금 반영 <span id="queue-count" class="pill">0</span></button>
+          <button id="btn-copy-sql" type="button" class="ghost">대기 중인 SQL 복사</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>데이터</legend>
+        <div class="row">
+          <button id="btn-snapshot" type="button" class="ghost">로컬 전체를 DoltHub로 덮어쓰기</button>
+          <button id="btn-export" type="button" class="ghost">JSON 내보내기</button>
+        </div>
+        <p id="status" class="status" role="status"></p>
+      </fieldset>
+    </div>
+  </dialog>
+</div>
+
+<script src="wasm_exec.js"></script>
+<script>
+(async () => {
+  const go = new Go();
+  try {
+    const result = await WebAssembly.instantiateStreaming(fetch("app.wasm"), go.importObject);
+    go.run(result.instance);
+  } catch (err) {
+    document.getElementById("boot").innerHTML =
+      '<p class="err">앱을 불러오지 못했습니다.<br><small>' + String(err) + '</small></p>';
+  }
+})();
+
+// 로컬 개발 중에는 서비스 워커가 옛 자산을 붙잡고 있어 방해가 된다.
+const isLocal = ["localhost", "127.0.0.1"].includes(location.hostname);
+if ("serviceWorker" in navigator && !isLocal) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+} else if (isLocal && "serviceWorker" in navigator) {
+  navigator.serviceWorker.getRegistrations().then((rs) => rs.forEach((r) => r.unregister()));
+  if (window.caches) caches.keys().then((ks) => ks.forEach((k) => caches.delete(k)));
+}
+</script>
+</body>
+</html>

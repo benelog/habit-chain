@@ -1,0 +1,42 @@
+name: DoltHub SQL 수동 실행
+
+# 평소 쓰기는 Cloudflare Worker(worker/src/index.js)가 처리한다.
+# 이 워크플로우는 손으로 돌리는 용도다 — 스키마 초기화, 일회성 정리,
+# Worker가 없을 때의 대체 경로.
+#
+# 필요한 시크릿: DOLTHUB_TOKEN (DoltHub → Settings → Tokens 에서 발급)
+
+on:
+  workflow_dispatch:
+    inputs:
+      db:
+        description: 'DoltHub DB (owner/name)'
+        required: true
+      branch:
+        description: '브랜치'
+        default: main
+      sql:
+        description: '실행할 SQL (한 줄에 한 문장)'
+        required: true
+
+concurrency:
+  group: dolt-sync
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: DoltHub에 반영
+        env:
+          DOLTHUB_TOKEN: ${{ secrets.DOLTHUB_TOKEN }}
+          DOLT_DB: ${{ inputs.db }}
+          DOLT_BRANCH: ${{ inputs.branch }}
+          DOLT_SQL: ${{ inputs.sql }}
+        run: python3 scripts/dolt_apply.py

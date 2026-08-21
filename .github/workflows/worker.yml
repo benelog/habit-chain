@@ -1,0 +1,36 @@
+name: Deploy Cloudflare Worker
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: worker
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: wasm 빌드
+        run: |
+          GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o web/app.wasm .
+          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" web/wasm_exec.js
+
+      - name: 서비스 워커 캐시 버전 갱신
+        run: sed -i "s/const BUILD_ID = \"dev\";/const BUILD_ID = \"${GITHUB_SHA::12}\";/" web/sw.js
+
+      # DOLTHUB_TOKEN·WRITE_KEY는 `wrangler secret put` 으로 따로 넣는다.
+      # 배포는 그 값을 건드리지 않는다.
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker
