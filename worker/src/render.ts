@@ -56,14 +56,16 @@ function md(d: DateStr): string {
  * hx-disabled-elt이 없으면 왕복 2초 동안 연타가 되고 같은 요청이 여러 번 나간다.
  * INSERT IGNORE / DELETE라 데이터가 깨지지는 않지만 커밋이 그만큼 쌓인다.
  *
- * hx-indicator가 둘인 이유: 누른 칸은 스스로 깜빡이고, 카드 전체는 흐려지면서
- * pointer-events가 꺼진다. 같은 카드의 다른 칸을 겹쳐 누르면 응답이 뒤섞인다.
+ * hx-indicator를 카드에 거는 이유: 요청 중에는 카드가 흐려지면서 pointer-events가
+ * 꺼진다. 같은 카드의 다른 칸을 겹쳐 누르면 응답이 뒤섞인다.
+ * (indicator 목록에 `this`는 못 쓴다 — htmx가 CSS 타입 선택자로 읽어 아무것도 못 찾는다.
+ * 누른 칸은 hx-disabled-elt으로 disabled가 되므로 CSS가 그걸 보고 깜빡인다.)
  */
 function toggleAttrs(habitID: string, date: DateStr): string {
   return (
     `hx-post="/habits/${encodeURIComponent(habitID)}/toggle?date=${date}" ` +
     `hx-target="closest .card" hx-swap="outerHTML" ` +
-    `hx-indicator="this, closest .card" hx-disabled-elt="this"`
+    `hx-indicator="closest .card" hx-disabled-elt="this"`
   );
 }
 
@@ -113,12 +115,11 @@ export function renderDay(state: State, today: DateStr, oob: boolean): string {
     })
     .join("");
 
-  const tally = done === all ? "모두 이어감" : `/ ${all} 이어감`;
   return `<header class="day${done === all ? " all-done" : ""}" id="day"${oob ? ` hx-swap-oob="true"` : ""}>
   <div class="day-date">${md(today)}<small>${DOW[dayOfWeek(today)]}요일</small></div>
   <div class="day-tally">
     <div class="day-links" aria-hidden="true">${links}</div>
-    <p class="day-count">오늘 <b>${done}</b> ${tally}</p>
+    <p class="day-count">오늘 <b>${done}</b>${done === all ? "개 모두 이어감" : ` / ${all} 이어감`}</p>
   </div>
 </header>`;
 }

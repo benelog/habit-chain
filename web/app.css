@@ -236,7 +236,8 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
    사슬 연결부를 가로질러, 이어져 있는 날이 끊긴 것처럼 보인다.
    이미 채웠다면 오늘이 어디인지는 알 필요도 없다 — 그게 마지막 칸이다. */
 .cell.today:not(.done) { box-shadow: inset 0 0 0 2px var(--habit); }
-.cell.htmx-request { animation: cellwait .8s ease-in-out infinite; }
+/* 요청 중인 칸. hx-disabled-elt이 끈 그 칸이 방금 눌린 칸이다. */
+.card.htmx-request .cell[disabled]:not(.future) { animation: cellwait .8s ease-in-out infinite; }
 @keyframes cellwait { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
 
 /* 사슬 연결부. 붙어 있는 날은 하나로 이어 붙인다. */
