@@ -5,7 +5,7 @@
 매일 칸을 하나씩 채우고, 그 사슬을 끊지 않는 것. 그것만 하는 앱입니다.
 Go로 짜서 WebAssembly로 돌리고, 데이터는 [DoltHub](https://www.dolthub.com)에 버전 관리된 채로 쌓입니다.
 
-- **앱**: https://habit-chain.\<계정\>.workers.dev (Cloudflare Workers)
+- **앱**: https://habit-chain.habit-chain-worker.workers.dev
 - **데이터**: https://www.dolthub.com/repositories/benelog/habit-chain
 
 ## 왜 이런 구조인가
@@ -18,7 +18,7 @@ Go로 짜서 WebAssembly로 돌리고, 데이터는 [DoltHub](https://www.dolthu
 | 쓰기 `POST .../write/{from}/{to}` | 불가 | 토큰을 `authorization` 헤더로만 받는데, preflight 응답이 `Access-Control-Allow-Methods: GET` 하나뿐이고 `Allow-Headers`가 없습니다. |
 | v2 API `/api/v2/...` | 불가 | `OPTIONS`에 405로 답하고, 성공 응답에도 CORS 헤더가 없습니다. |
 
-그래서 이렇게 나눴습니다.
+그래서 쓰기만 서버가 대신합니다. 화면과 API를 **하나의 Cloudflare Worker**가 서빙합니다.
 
 ```
                     읽기 (인증 없음, CORS 통과)
@@ -28,14 +28,14 @@ Go로 짜서 WebAssembly로 돌리고, 데이터는 [DoltHub](https://www.dolthu
   └───────────┘      │ Cloudflare Worker │   쓰기       └──────────┘
         │            │ (DOLTHUB_TOKEN)   │
         ▼            └──────────────────┘
-  LocalStorage
+  LocalStorage         화면도 여기서 나온다
   (항상 여기 먼저 쓴다)
 ```
 
-화면과 API를 같은 Worker가 서빙합니다. 그래서 앱은 자기가 놓인 곳의 `/api/health`를 읽어
-DB 이름과 브랜치를 스스로 채웁니다 — 처음 여는 사람도 설정 화면을 열 필요가 없습니다.
+앱은 자기가 놓인 곳의 `/api/health`를 읽어 DB 이름과 브랜치를 스스로 채웁니다.
+처음 여는 사람도 설정 화면을 열 필요가 없습니다.
 
-기록은 **언제나 LocalStorage에 먼저** 들어갑니다. 네트워크가 없어도, 쓰기 서버가 없어도 앱은 그대로 동작합니다.
+기록은 **언제나 LocalStorage에 먼저** 들어갑니다. 네트워크가 없어도, 쓰기 서버가 죽어도 앱은 그대로 동작합니다.
 DoltHub 반영은 그 위에 얹힌 동기화일 뿐이고, 아직 못 보낸 변경은 SQL 큐에 남아 상단 배지에 개수로 표시됩니다.
 
 ## 사용자별 데이터 격리
@@ -58,29 +58,24 @@ internal/
   app/                   화면 렌더링과 이벤트
 web/                     정적 자산 (PWA: manifest, service worker, 아이콘)
 worker/                  Cloudflare Worker — 정적 자산 서빙 + /api/write
-scripts/
-  serve.py               로컬 확인용 정적 서버
-  dolt_apply.py          손으로 SQL을 반영할 때 쓰는 스크립트
 sql/schema.sql           DoltHub 초기 스키마
 ```
 
 ## 로컬에서 돌리기
 
 ```bash
-# 1. wasm 빌드
+# wasm 빌드
 GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o web/app.wasm .
 cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" web/wasm_exec.js
 
-# 2a. 정적 파일만 보기
-python3 scripts/serve.py          # http://127.0.0.1:8787
-
-# 2b. 쓰기 프록시까지 함께 보기
+# Worker와 화면을 함께 띄운다
 cd worker
+npm install
 cat > .dev.vars <<'EOF'
 DOLTHUB_TOKEN=<DoltHub 토큰>
 WRITE_KEY=<아무 문자열>
 EOF
-npx wrangler dev --port 8788      # http://localhost:8788
+npm run dev                       # http://localhost:8788
 
 # 테스트
 go test ./internal/model/
@@ -88,13 +83,7 @@ go test ./internal/model/
 
 `localhost`에서는 서비스 워커를 등록하지 않습니다. 캐시가 옛 자산을 붙잡는 일을 막기 위해서입니다.
 
-## 처음 설정하기
-
-**1. DoltHub 스키마 만들기** — 새 DB는 브랜치조차 없어서 읽기부터 실패합니다.
-`sql/schema.sql`을 DoltHub의 SQL 콘솔에 붙여넣고 커밋하거나, 토큰이 있다면 Actions의
-`DoltHub SQL 수동 실행` 워크플로우로 넣습니다.
-
-**2. Worker 배포**
+## 배포
 
 ```bash
 cd worker
@@ -104,14 +93,15 @@ npx wrangler deploy
 ```
 
 이후 push마다 `.github/workflows/worker.yml`이 자동 배포합니다.
-저장소 시크릿에 `CLOUDFLARE_API_TOKEN`과 `CLOUDFLARE_ACCOUNT_ID`가 필요합니다.
-시크릿이 없으면 배포 단계는 알림만 남기고 넘어갑니다.
+저장소 시크릿에 `CLOUDFLARE_API_TOKEN`과 `CLOUDFLARE_ACCOUNT_ID`가 필요하고,
+없으면 배포 단계는 알림만 남기고 넘어갑니다. 시크릿은 배포가 건드리지 않습니다.
 
-**3. 앱 설정** — `WRITE_KEY`를 설정했다면 앱 설정에 한 번 넣습니다. 그 외에는 손댈 것이 없습니다.
-DB 이름과 브랜치는 Worker가 알려주는 값으로 자동으로 채워집니다.
+**새 DB를 쓴다면** 스키마부터 넣어야 합니다. 새 DoltHub DB는 커밋이 없어 브랜치조차 없고, 그 상태로는 읽기도 실패합니다.
+`sql/schema.sql`을 DoltHub의 SQL 콘솔에 붙여넣고 커밋하거나, 앱 설정의 `스키마 SQL 복사` 버튼을 쓰세요.
 
-`WRITE_KEY`는 선택이지만 권합니다. 설정하지 않으면 Worker 주소를 아는 누구나 `ALLOWED_DB`에
-임의 SQL을 실행할 수 있습니다. Dolt가 버전 관리를 하니 되돌릴 수는 있지만 손이 갑니다.
+`WRITE_KEY`는 선택이지만 권합니다. 설정하지 않으면 입력란 자체가 사라져 설정할 것이 아무것도 없어지지만,
+Worker 주소를 아는 누구나 `ALLOWED_DB`에 임의 SQL을 실행할 수 있습니다.
+Dolt가 버전 관리를 하니 되돌릴 수는 있어도 손이 갑니다.
 
 ## 사슬 규칙
 
