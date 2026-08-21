@@ -457,7 +457,7 @@ export function shell(): string {
       hx-on::after-request="habitChain.afterAdd(event, this)">
       <input id="new-name" name="name" type="text" placeholder="새 습관 (예: 아침 30분 달리기)" maxlength="60" required>
       <textarea id="new-desc" name="description" rows="2" maxlength="2000"
-        placeholder="설명 (선택) — 여러 줄로 적어도 됩니다"></textarea>
+        placeholder="설명(선택. 여러 줄로 적어도 됩니다.)"></textarea>
       <div class="add-row">
         <div class="swatches" role="radiogroup" aria-label="사슬 색">${swatches}</div>
         <button type="submit" class="primary">추가</button>

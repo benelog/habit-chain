@@ -141,8 +141,9 @@ async function handleList(request: Request, ctx: Ctx): Promise<Response> {
  * ALTER ADD COLUMN은 이미 있으면 에러라서, 두 번 눌러도 탈이 없으려면 이래야 한다.
  *
  * 이 길은 앱이 쓰기에 쓰는 엔드포인트를 그대로 탄다. DoltHub 웹의 조회 콘솔은
- * DDL을 거부하지만 그것은 읽기 쪽이다. 여기서도 거부당하면 그 문구가 그대로
- * 토스트로 뜨고, 사용자는 스키마 SQL을 손으로 넣는 예전 길로 돌아가면 된다.
+ * DDL을 거부하지만 그것은 읽기 쪽이다. 쓰기 엔드포인트는 DDL을 받고, 커밋이
+ * 하나도 없어 브랜치조차 없는 DB에는 브랜치까지 만들어 준다 — 2026-08에 빈 DB로
+ * 확인했다. 문서에 적힌 동작이 아니라 확인한 동작이라, 실패하는 자리는 남겨 둔다.
  */
 async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
   const guard = requireWrite(ctx);
