@@ -9,18 +9,17 @@
   // 있는데, Workers 커스텀 도메인은 Cloudflare 존을 요구한다. Pages는 서브도메인이면
   // 외부 DNS에 CNAME 한 줄로 붙는다.
   //
-  // 빌드:   npm run build
-  // 배포:   npm run deploy
-  // 시크릿: npx wrangler pages secret put DOLTHUB_TOKEN
-  //        npx wrangler pages secret put WRITE_KEY
+  // 빌드: npm run build
+  // 배포: npm run deploy
+  //
+  // 시크릿은 없다. DoltHub DB와 토큰은 사용자가 설정에 넣고, 요청마다 헤더로 온다.
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "habit-chain",
   "pages_build_output_dir": "dist",
   "compatibility_date": "2026-08-01",
   "vars": {
-    // 읽고 쓸 DoltHub DB. 첫 항목을 쓴다.
-    // 다른 사람이 자기 DB를 쓰려면 이 저장소를 포크해 자기 프로젝트를 둔다.
-    "ALLOWED_DB": "benelog/habit-chain",
+    // 설정이 빈 사람에게 보여 줄 DB. 토큰이 없으면 읽기만 된다.
+    "DEFAULT_DB": "benelog/habit-chain",
     "DOLT_BRANCH": "main"
   }
 }

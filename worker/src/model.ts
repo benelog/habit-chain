@@ -67,6 +67,25 @@ export function isDateStr(s: unknown): s is DateStr {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(toEpoch(s));
 }
 
+// ── 사용자가 넣는 값 ───────────────────────────────────
+//
+// DB 이름과 토큰은 브라우저의 설정에서 와서 헤더에 실린다. 둘 다 그대로 믿지 않는다.
+
+/** "owner/name" 형식인지 본다. DoltHub의 이름에 쓰이는 글자만 받는다. */
+export function isDbName(s: unknown): s is string {
+  return typeof s === "string" && /^[A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/.test(s);
+}
+
+/**
+ * 토큰으로 쓸 수 있는 글자인지 본다.
+ *
+ * 값이 맞는지는 DoltHub만 안다. 여기서 보는 것은 이 문자열이 HTTP 헤더에
+ * 들어가도 되는지다 — 줄바꿈이 섞여 들어오면 요청 자체가 조작된다.
+ */
+export function isToken(s: unknown): s is string {
+  return typeof s === "string" && /^[\x21-\x7e]{8,256}$/.test(s);
+}
+
 // ── 사슬 계산 ──────────────────────────────────────────
 
 /**

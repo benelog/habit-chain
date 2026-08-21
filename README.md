@@ -25,12 +25,12 @@ TypeScript로 짠 Cloudflare Worker가 화면을 그리고, 브라우저는 [htm
 ```
   ┌───────────┐   HTML 조각      ┌──────────────────┐   읽기 + 쓰기   ┌──────────┐
   │  브라우저   │ ◀────────────── │ Cloudflare Worker │ ──────────────▶ │ DoltHub  │
-  │   htmx    │ ──────────────▶ │  (DOLTHUB_TOKEN)  │                 │   API    │
-  └───────────┘   hx-post 등     └──────────────────┘                 └──────────┘
-        │
+  │   htmx    │ ──────────────▶ │   (토큰을 그대로   │                 │   API    │
+  └───────────┘  hx-post 등 +    │     넘길 뿐)      │                 └──────────┘
+        │        DB·토큰 헤더     └──────────────────┘
         ▼
   LocalStorage
-  (쓰기 키 하나뿐)
+  (DB 이름과 토큰)
 ```
 
 브라우저에 도메인 로직이 없습니다. 사슬 계산도, 그리드 배치도 Worker가 하고
@@ -41,7 +41,7 @@ UTC로 정하면 KST 사용자는 오전 9시 전까지 체크가 어제 칸에 
 그래서 htmx가 요청마다 `X-Local-Date` 헤더에 로컬 날짜를 실어 보냅니다.
 
 **기록의 원본은 DoltHub 하나뿐입니다.** 앱은 켤 때마다 거기서 읽어 메모리에 두고, 브라우저의 LocalStorage에는
-DB 이름·브랜치·쓰기 키 같은 **사용자 설정만** 남깁니다. 그래서 다른 기기에서 지운 습관이 여기서도 사라집니다.
+DB 이름과 토큰 같은 **사용자 설정만** 남깁니다. 그래서 다른 기기에서 지운 습관이 여기서도 사라집니다.
 
 체크는 누를 때마다 곧바로 쓰기 서버로 갑니다. 미루지 않는 이유는 미룰 곳이 없기 때문입니다 —
 쌓아 둘 큐가 없습니다. 왕복이 1.5~2초라 그동안 상단에 가는 진행 막대가 지나가고, 누른 칸은 깜빡이고,
@@ -50,11 +50,22 @@ DB 이름·브랜치·쓰기 키 같은 **사용자 설정만** 남깁니다. �
 
 ## 사용자별 데이터 격리
 
-읽기까지 Worker로 옮기면서 **DB는 Worker가 `ALLOWED_DB`로 못박습니다.** 화면에서 다른 DB를 지정하는 설정은 없앴습니다 —
-서버가 그리는데 클라이언트가 원본을 고른다는 게 앞뒤가 맞지 않기 때문입니다.
+**서버는 토큰을 갖지 않습니다.** DB 이름과 DoltHub 토큰은 사용자가 설정에 넣고, 요청마다 헤더로 옵니다
+(`X-Dolt-DB`, `X-Dolt-Token`). 서버는 받은 토큰을 DoltHub에 그대로 넘길 뿐이고, 어디에도 저장하지 않습니다.
 
-자기 데이터를 쓰려면 이 저장소를 포크해 **자기 DoltHub DB와 자기 Worker**를 두면 됩니다.
-어차피 `DOLTHUB_TOKEN`은 그 토큰 주인의 DB에만 쓸 수 있어서, 예전에도 남의 Worker로는 쓰기가 안 됐습니다.
+| 설정 | 되는 일 |
+|---|---|
+| 아무것도 안 넣음 | 서버의 `DEFAULT_DB`를 **읽기만** 합니다. 남의 사슬을 구경하는 셈입니다 |
+| DB 이름만 | 그 DB를 읽습니다. DoltHub의 읽기 API는 공개 DB에 토큰을 요구하지 않습니다 |
+| DB 이름 + 토큰 | 그 DB에 기록합니다. 토큰 주인의 DB가 아니면 DoltHub가 거절합니다 |
+
+그래서 격리를 앱이 지킬 필요가 없습니다. **DoltHub의 토큰이 이미 그 일을 합니다** —
+남의 DB 이름을 넣어도 자기 토큰으로는 쓸 수가 없습니다.
+포크해서 자기 서버를 띄울 필요도 없어졌고, 예전에 쓰던 공유 비밀(`WRITE_KEY`)도 사라졌습니다.
+
+대가는 분명합니다. **토큰이 브라우저의 LocalStorage에 남습니다.** XSS가 하나라도 뚫리면 토큰이 나가고,
+그 토큰으로 할 수 있는 일은 이 앱 밖까지 갑니다. 그래서 설정 화면에 공용 컴퓨터에서는 넣지 말라고 적어 두었고,
+`이 브라우저에서 지우기` 버튼을 두었습니다. 더 안전한 쪽을 원한다면 서버가 토큰을 쥐던 예전 방식으로 돌아가야 합니다.
 
 ## 구조
 
@@ -79,17 +90,13 @@ sql/schema.sql           DoltHub 초기 스키마
 | `GET /export` | 전체 JSON 내려받기 |
 
 첫 요청이 껍데기뿐인 데는 이유가 있습니다. `GET /`는 htmx 요청이 아니라서 `hx-headers`가 붙지 않고,
-그러면 서버가 사용자의 로컬 날짜도 쓰기 키도 모릅니다. 데이터는 전부 htmx 요청에 태웁니다.
+그러면 서버가 사용자의 로컬 날짜도, 어느 DB를 볼지도 모릅니다. 데이터는 전부 htmx 요청에 태웁니다.
 
 ## 로컬에서 돌리기
 
 ```bash
 cd worker
 npm install
-cat > .dev.vars <<'VARS'
-DOLTHUB_TOKEN=<DoltHub 토큰>
-WRITE_KEY=<아무 문자열>
-VARS
 npm run dev        # http://localhost:8788
 
 npm test           # vitest
@@ -101,11 +108,13 @@ npm run build      # dist/ 만 다시 만든다
 복사하고 esbuild가 `src/index.ts`를 `dist/_worker.js` 하나로 묶는 게 전부입니다(수십 밀리초).
 자산이나 코드를 고쳤으면 `npm run dev`를 다시 띄우세요.
 
-로컬에서 실제 DoltHub를 건드리기 싫다면 `.dev.vars`에 한 줄 더하면 됩니다 —
-`.dev.vars`가 `wrangler.jsonc`의 `vars`를 덮습니다.
+시크릿을 넣을 것이 없습니다. DB와 토큰은 앱 설정에서 넣으니, 로컬에서 실제 DoltHub를
+건드리기 싫다면 설정에 dev용 DB를 넣거나 토큰을 비워 두면 됩니다 — 토큰이 없으면 읽기만 됩니다.
+
+기본으로 읽을 DB를 바꾸려면 `.dev.vars`에 한 줄 두면 됩니다. `.dev.vars`가 `wrangler.jsonc`의 `vars`를 덮습니다.
 
 ```
-ALLOWED_DB=<owner>/<dev용 DB>
+DEFAULT_DB=<owner>/<dev용 DB>
 ```
 
 `localhost`에서는 서비스 워커를 등록하지 않습니다. 캐시가 옛 자산을 붙잡는 일을 막기 위해서입니다.
@@ -117,10 +126,10 @@ ALLOWED_DB=<owner>/<dev용 DB>
 
 ```bash
 cd worker
-npx wrangler pages secret put DOLTHUB_TOKEN   # DoltHub → Settings → Tokens
-npx wrangler pages secret put WRITE_KEY       # 앱 설정에 넣을 공유 비밀
-npm run deploy                                # 빌드 후 wrangler pages deploy
+npm run deploy     # 빌드 후 wrangler pages deploy
 ```
+
+넣을 시크릿이 없습니다. 서버가 아는 것은 `DEFAULT_DB`뿐이고, 그건 공개 정보입니다.
 
 **Worker가 아니라 Pages인 이유는 도메인 하나 때문입니다.** `benelog.net`의 DNS는 Netlify에 있는데,
 Workers 커스텀 도메인은 그 도메인이 Cloudflare 존일 것을 요구하고 서브도메인만 따로 존으로 떼는 것은
@@ -135,10 +144,6 @@ Enterprise 전용입니다. Pages는 서브도메인이면 외부 DNS에 CNAME �
 
 **새 DB를 쓴다면** 스키마부터 넣어야 합니다. 새 DoltHub DB는 커밋이 없어 브랜치조차 없고, 그 상태로는 읽기도 실패합니다.
 `sql/schema.sql`을 DoltHub의 SQL 콘솔에 붙여넣고 커밋하거나, 앱 설정의 `스키마 SQL 보기`(`/schema.sql`)에서 받아 쓰세요.
-
-`WRITE_KEY`는 선택이지만 권합니다. 설정하지 않으면 입력란 자체가 사라져 설정할 것이 아무것도 없어지지만,
-앱 주소를 아는 누구나 `ALLOWED_DB`에 임의 SQL을 실행할 수 있습니다.
-Dolt가 버전 관리를 하니 되돌릴 수는 있어도 손이 갑니다.
 
 ## 화면의 규칙
 

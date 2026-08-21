@@ -39,8 +39,6 @@ jobs:
         working-directory: worker
         run: npm run build
 
-      # DOLTHUB_TOKEN·WRITE_KEY는 `wrangler secret put` 으로 따로 넣는다.
-      # 배포는 그 값을 건드리지 않는다.
       - name: Cloudflare 시크릿 확인
         id: check
         env:

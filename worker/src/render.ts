@@ -283,7 +283,7 @@ const MARK =
  * shell은 첫 요청에 돌려주는 페이지다.
  *
  * 데이터를 담지 않는다. 첫 GET은 htmx 요청이 아니라서 hx-headers가 붙지 않고,
- * 그러면 서버가 사용자의 로컬 날짜도 쓰기 키도 모른다. 그래서 목록은
+ * 그러면 서버가 사용자의 로컬 날짜도 어느 DB를 볼지도 모른다. 그래서 목록은
  * hx-trigger="load"로 한 번 더 요청해서 채운다 — 그 요청부터는 헤더가 붙는다.
  */
 export function shell(): string {
@@ -312,7 +312,7 @@ export function shell(): string {
 <link rel="stylesheet" href="/app.css">
 <script src="/htmx.min.js" defer></script>
 </head>
-<body hx-headers='js:{"X-Local-Date": habitChain.today(), "X-Write-Key": habitChain.writeKey()}'>
+<body hx-headers='js:{"X-Local-Date": habitChain.today(), "X-Dolt-DB": habitChain.db(), "X-Dolt-Token": habitChain.token()}'>
 
 <div id="progress" aria-hidden="true"></div>
 <span id="live" class="sr-only" role="status"></span>
@@ -351,26 +351,40 @@ export function shell(): string {
     </div>
 
     <div class="settings-body">
-      <fieldset id="write-key-row" hidden>
-        <legend>쓰기 키</legend>
+      <fieldset>
+        <legend>DoltHub</legend>
         <p class="hint">
-          이 서버가 <code>WRITE_KEY</code>를 요구합니다. 키는 이 브라우저에만 저장되고,
-          요청마다 헤더로 실려 갑니다.
+          기록의 원본은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>의 DB입니다.
+          비워 두면 이 서버의 기본 DB(<code id="db-name">…</code>)를 <b>읽기만</b> 합니다.
+          자기 DB 이름과 토큰을 넣으면 그때부터 그쪽에 기록됩니다.
         </p>
-        <label for="set-write-key">키
-          <input id="set-write-key" type="password" placeholder="서버의 WRITE_KEY" spellcheck="false"
-            oninput="habitChain.saveWriteKey(this.value)">
+        <label for="set-db">DB 이름
+          <input id="set-db" type="text" placeholder="owner/name" spellcheck="false"
+            autocapitalize="none" autocorrect="off" autocomplete="off"
+            onchange="habitChain.saveDb(this.value)">
         </label>
+        <label for="set-token">토큰
+          <input id="set-token" type="password" placeholder="DoltHub → Settings → Tokens" spellcheck="false"
+            autocapitalize="none" autocorrect="off" autocomplete="new-password"
+            onchange="habitChain.saveToken(this.value)">
+        </label>
+        <p class="hint">
+          토큰은 서버에 저장되지 않습니다. 이 브라우저에만 남고 요청마다 헤더로 실려,
+          서버는 그걸 DoltHub에 그대로 넘길 뿐입니다.
+          <b>공용 컴퓨터에서는 넣지 마세요</b> — 그 토큰으로 할 수 있는 일은 이 앱 밖까지 갑니다.
+        </p>
+        <div class="row">
+          <button type="button" class="ghost" onclick="habitChain.forget()">이 브라우저에서 지우기</button>
+        </div>
       </fieldset>
 
       <fieldset>
         <legend>데이터</legend>
         <p class="hint">
-          기록의 원본은 이 서버가 물고 있는 DoltHub DB(<code id="db-name">…</code>)입니다.
-          브라우저에는 쓰기 키만 남습니다.
+          새 DB라면 스키마부터 넣어야 합니다. 아래 SQL을 DoltHub의 SQL 콘솔에 붙여넣고 커밋하세요.
         </p>
         <div class="row">
-          <a class="ghost" href="/export" download>JSON 내보내기</a>
+          <a class="ghost" id="export-link" href="/export" download>JSON 내보내기</a>
           <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
         </div>
       </fieldset>
@@ -402,11 +416,36 @@ window.habitChain = {
     const p = (n) => String(n).padStart(2, "0");
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
   },
-  writeKey() {
-    try { return localStorage.getItem("habit-chain.write_key") || ""; } catch { return ""; }
+  db() {
+    try { return localStorage.getItem("habit-chain.db") || ""; } catch { return ""; }
   },
-  saveWriteKey(v) {
-    try { localStorage.setItem("habit-chain.write_key", v.trim()); } catch {}
+  token() {
+    try { return localStorage.getItem("habit-chain.token") || ""; } catch { return ""; }
+  },
+  // DB를 바꾸면 화면에 있는 기록은 남의 것이다. 그 자리에서 다시 읽는다.
+  saveDb(v) {
+    try { localStorage.setItem("habit-chain.db", v.trim()); } catch {}
+    this.syncExport();
+    htmx.trigger("#habits", "load");
+  },
+  saveToken(v) {
+    try { localStorage.setItem("habit-chain.token", v.trim()); } catch {}
+  },
+  // 내보내기는 링크다. htmx 요청이 아니라서 헤더가 안 붙으니 DB를 주소에 담는다.
+  syncExport() {
+    const a = document.getElementById("export-link");
+    const db = this.db();
+    if (a) a.href = db ? "/export?db=" + encodeURIComponent(db) : "/export";
+  },
+  forget() {
+    try {
+      localStorage.removeItem("habit-chain.db");
+      localStorage.removeItem("habit-chain.token");
+    } catch {}
+    document.getElementById("set-db").value = "";
+    document.getElementById("set-token").value = "";
+    this.syncExport();
+    htmx.trigger("#habits", "load");
   },
   clearToast() {
     document.getElementById("toast").innerHTML = "";
@@ -429,12 +468,12 @@ window.habitChain = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-  const input = document.getElementById("set-write-key");
-  if (input) input.value = window.habitChain.writeKey();
+  document.getElementById("set-db").value = window.habitChain.db();
+  document.getElementById("set-token").value = window.habitChain.token();
+  window.habitChain.syncExport();
 
   fetch("/api/health").then((r) => r.json()).then((cfg) => {
-    if (cfg.requiresKey) document.getElementById("write-key-row").hidden = false;
-    if (cfg.db) document.getElementById("db-name").textContent = cfg.db;
+    if (cfg.defaultDb) document.getElementById("db-name").textContent = cfg.defaultDb;
   }).catch(() => {});
 });
 

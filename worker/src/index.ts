@@ -5,25 +5,34 @@
  * 이제 읽기·쓰기·렌더링이 전부 여기 있고, 브라우저는 htmx가 조각을 갈아끼우기만 한다.
  * 그 덕에 DoltHub의 CORS 동작에 기대는 부분이 사라졌고 DB 이름도 밖으로 나가지 않는다.
  *
- * 시크릿:
- *   DOLTHUB_TOKEN — DoltHub → Settings → Tokens 에서 발급
- *   WRITE_KEY     — 설정에 넣는 공유 비밀. 없으면 쓰기를 아무나 할 수 있다.
+ * DB와 토큰은 서버가 아니라 사용자가 가진다. 설정에 넣은 값이 요청마다 헤더로 온다:
+ *   X-Dolt-DB     — owner/name. 없으면 서버의 DEFAULT_DB를 읽는다.
+ *   X-Dolt-Token  — DoltHub → Settings → Tokens 에서 발급. 쓰기에만 쓴다.
+ *
+ * 서버에는 토큰이 없다. 그래서 공유 비밀(예전의 WRITE_KEY)로 쓰기를 막을 일도 없다 —
+ * 자기 토큰을 넣은 사람이 자기 DB에 쓸 뿐이고, 남의 DB에는 애초에 쓸 수가 없다.
+ *
  * 변수:
- *   ALLOWED_DB    — 읽고 쓸 DB. 첫 항목을 쓴다.
+ *   DEFAULT_DB    — 설정이 비었을 때 읽을 DB
  *   DOLT_BRANCH   — 기본 main
  */
 
 import * as dolt from "./dolt";
-import { compute, datesOf, isDateStr } from "./model";
+import { compute, datesOf, isDateStr, isDbName, isToken } from "./model";
 import type { Habit, State } from "./model";
 import { renderDay, renderError, renderHabits, renderLive, renderOneCard, renderToast, shell } from "./render";
 
 interface Env {
   ASSETS: Fetcher;
-  DOLTHUB_TOKEN?: string;
-  WRITE_KEY?: string;
-  ALLOWED_DB?: string;
+  DEFAULT_DB?: string;
   DOLT_BRANCH?: string;
+}
+
+/** 이번 요청이 어느 DB를 어떤 자격으로 건드리는지. 헤더에서 만들어진다. */
+interface Ctx {
+  db: string;
+  token: string;
+  branch: string;
 }
 
 const HTML = { "Content-Type": "text/html; charset=utf-8" };
@@ -39,10 +48,8 @@ export default {
     if (path === "/api/health") {
       return json({
         ok: true,
-        db: dbOf(env),
+        defaultDb: (env.DEFAULT_DB || "").trim(),
         branch: env.DOLT_BRANCH || "main",
-        writeConfigured: Boolean(env.DOLTHUB_TOKEN),
-        requiresKey: Boolean(env.WRITE_KEY),
       });
     }
     if (path === "/schema.sql") {
@@ -52,26 +59,27 @@ export default {
     }
 
     const isList = path === "/habits" && request.method === "GET";
+    const ctx = ctxOf(request, env);
 
     try {
       if (isList) {
-        return await handleList(request, env);
+        return await handleList(request, ctx);
       }
       if (path === "/habits" && request.method === "POST") {
-        return await handleAdd(request, env);
+        return await handleAdd(request, ctx);
       }
       if (path === "/export" && request.method === "GET") {
-        return await handleExport(env);
+        return await handleExport(url, ctx);
       }
 
       const toggle = /^\/habits\/([^/]+)\/toggle$/.exec(path);
       if (toggle && request.method === "POST") {
-        return await handleToggle(request, env, decodeURIComponent(toggle[1]!), url);
+        return await handleToggle(request, ctx, decodeURIComponent(toggle[1]!), url);
       }
 
       const habit = /^\/habits\/([^/]+)$/.exec(path);
       if (habit && request.method === "DELETE") {
-        return await handleDelete(request, env, decodeURIComponent(habit[1]!));
+        return await handleDelete(request, ctx, decodeURIComponent(habit[1]!));
       }
     } catch (err) {
       // 목록을 못 불러왔으면 보여줄 게 없으니 화면 전체가 오류다.
@@ -85,13 +93,19 @@ export default {
   },
 };
 
-async function handleList(request: Request, env: Env): Promise<Response> {
-  const state = await dolt.pull(dbOf(env), branchOf(env));
+async function handleList(request: Request, ctx: Ctx): Promise<Response> {
+  // 목록이 실패하면 보여 줄 게 없다. 토스트가 아니라 화면 전체로 말한다.
+  const problem = dbProblem(ctx);
+  if (problem) {
+    return new Response(renderError(problem), { status: 400, headers: HTML });
+  }
+
+  const state = await dolt.pull(ctx.db, ctx.branch);
   return new Response(renderHabits(state, todayOf(request)), { headers: HTML });
 }
 
-async function handleAdd(request: Request, env: Env): Promise<Response> {
-  const guard = requireWrite(request, env);
+async function handleAdd(request: Request, ctx: Ctx): Promise<Response> {
+  const guard = requireWrite(ctx);
   if (guard) return guard;
 
   const form = await request.formData();
@@ -108,10 +122,10 @@ async function handleAdd(request: Request, env: Env): Promise<Response> {
     archived: false,
   };
 
-  await dolt.write(env.DOLTHUB_TOKEN!, dbOf(env), branchOf(env), [dolt.upsertHabit(habit)]);
+  await dolt.write(ctx.token, ctx.db, ctx.branch, [dolt.upsertHabit(habit)]);
 
   const today = todayOf(request);
-  const state = await dolt.pull(dbOf(env), branchOf(env));
+  const state = await dolt.pull(ctx.db, ctx.branch);
   return new Response(renderHabits(state, today) + renderLive(`${habit.name} 추가됨.`), {
     headers: HTML,
   });
@@ -126,11 +140,11 @@ async function handleAdd(request: Request, env: Env): Promise<Response> {
  */
 async function handleToggle(
   request: Request,
-  env: Env,
+  ctx: Ctx,
   habitID: string,
   url: URL,
 ): Promise<Response> {
-  const guard = requireWrite(request, env);
+  const guard = requireWrite(ctx);
   if (guard) return guard;
 
   const date = url.searchParams.get("date");
@@ -142,7 +156,7 @@ async function handleToggle(
     return toast("아직 오지 않은 날은 체크할 수 없습니다.", 400);
   }
 
-  const state = await dolt.pull(dbOf(env), branchOf(env));
+  const state = await dolt.pull(ctx.db, ctx.branch);
 
   // 다른 기기에서 지운 습관을 여기서 눌렀을 때. 카드 자리에 목록 전체를 끼워
   // 넣을 수는 없으니, 목적지를 목록으로 돌려 통째로 다시 그린다.
@@ -155,7 +169,7 @@ async function handleToggle(
   const on = state.checks.some((c) => c.habit_id === habitID && c.date === date);
   const stmt = on ? dolt.deleteCheck(habitID, date) : dolt.insertCheck(habitID, date);
 
-  await dolt.write(env.DOLTHUB_TOKEN!, dbOf(env), branchOf(env), [stmt]);
+  await dolt.write(ctx.token, ctx.db, ctx.branch, [stmt]);
 
   state.checks = on
     ? state.checks.filter((c) => !(c.habit_id === habitID && c.date === date))
@@ -169,20 +183,34 @@ async function handleToggle(
   return new Response(body, { headers: HTML });
 }
 
-async function handleDelete(request: Request, env: Env, habitID: string): Promise<Response> {
-  const guard = requireWrite(request, env);
+async function handleDelete(request: Request, ctx: Ctx, habitID: string): Promise<Response> {
+  const guard = requireWrite(ctx);
   if (guard) return guard;
 
-  await dolt.write(env.DOLTHUB_TOKEN!, dbOf(env), branchOf(env), dolt.deleteHabit(habitID));
+  await dolt.write(ctx.token, ctx.db, ctx.branch, dolt.deleteHabit(habitID));
 
-  const state = await dolt.pull(dbOf(env), branchOf(env));
+  const state = await dolt.pull(ctx.db, ctx.branch);
   return new Response(renderHabits(state, todayOf(request)) + renderLive("습관을 삭제했습니다."), {
     headers: HTML,
   });
 }
 
-async function handleExport(env: Env): Promise<Response> {
-  const state = await dolt.pull(dbOf(env), branchOf(env));
+/**
+ * handleExport는 링크로 열린다.
+ *
+ * 링크는 htmx 요청이 아니라서 hx-headers가 붙지 않는다. 그래서 DB만은 쿼리로 받는다.
+ * 읽기에는 토큰이 필요 없으니 주소에 실릴 비밀도 없다.
+ */
+async function handleExport(url: URL, ctx: Ctx): Promise<Response> {
+  const asked = (url.searchParams.get("db") || "").trim();
+  const target: Ctx = asked === "" ? ctx : { ...ctx, db: asked };
+
+  const problem = dbProblem(target);
+  if (problem) {
+    return json({ error: problem }, 400);
+  }
+
+  const state = await dolt.pull(target.db, target.branch);
   const day = new Date().toISOString().slice(0, 10);
   return new Response(JSON.stringify(state, null, 2), {
     headers: {
@@ -199,12 +227,31 @@ function announce(state: State, habitID: string, date: string, wasOn: boolean, t
   return `${name} ${date} ${wasOn ? "체크 해제" : "체크"}. 현재 ${days}일째.`;
 }
 
-function dbOf(env: Env): string {
-  return (env.ALLOWED_DB || "").split(",")[0]?.trim() || "";
+/**
+ * ctxOf는 이번 요청의 대상을 정한다.
+ *
+ * 설정에 DB를 넣지 않은 사람에게도 화면은 보여야 한다. 그래서 헤더가 비었으면
+ * 서버의 기본 DB로 떨어진다 — 읽기는 토큰이 필요 없어서 그것만으로 충분하다.
+ * 토큰은 떨어질 곳이 없다. 안 넣었으면 쓰기가 막힌다.
+ */
+function ctxOf(request: Request, env: Env): Ctx {
+  const sent = (request.headers.get("X-Dolt-DB") || "").trim();
+  return {
+    db: sent || (env.DEFAULT_DB || "").trim(),
+    token: (request.headers.get("X-Dolt-Token") || "").trim(),
+    branch: env.DOLT_BRANCH || "main",
+  };
 }
 
-function branchOf(env: Env): string {
-  return env.DOLT_BRANCH || "main";
+/** DB 이름에 문제가 있으면 사람이 읽을 문장으로 돌려준다. 성하면 null이다. */
+function dbProblem(ctx: Ctx): string | null {
+  if (ctx.db === "") {
+    return "설정에서 DoltHub DB를 넣어 주세요. owner/name 형식입니다.";
+  }
+  if (!isDbName(ctx.db)) {
+    return `DB 이름은 owner/name 형식이어야 합니다: ${ctx.db}`;
+  }
+  return null;
 }
 
 /**
@@ -220,15 +267,16 @@ function todayOf(request: Request): string {
 }
 
 /** 쓰기 요청이 통과해도 되는지 본다. 통과하면 null을 돌려준다. */
-function requireWrite(request: Request, env: Env): Response | null {
-  if (!dbOf(env)) {
-    return toast("이 서버에 ALLOWED_DB가 설정되지 않았습니다.", 501);
+function requireWrite(ctx: Ctx): Response | null {
+  const problem = dbProblem(ctx);
+  if (problem) {
+    return toast(problem, 400);
   }
-  if (!env.DOLTHUB_TOKEN) {
-    return toast("이 서버에 DOLTHUB_TOKEN 시크릿이 설정되지 않았습니다.", 501);
+  if (ctx.token === "") {
+    return toast("설정에서 DoltHub 토큰을 넣어야 기록할 수 있습니다.", 401);
   }
-  if (env.WRITE_KEY && request.headers.get("X-Write-Key") !== env.WRITE_KEY) {
-    return toast("쓰기 키가 맞지 않습니다. 설정에서 넣어 주세요.", 401);
+  if (!isToken(ctx.token)) {
+    return toast("토큰에 쓸 수 없는 글자가 들어 있습니다. 다시 붙여 넣어 주세요.", 400);
   }
   return null;
 }

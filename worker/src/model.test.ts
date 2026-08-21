@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, compute, dayOfWeek, isDateStr, sqlEscape } from "./model";
+import { addDays, compute, dayOfWeek, isDateStr, isDbName, isToken, sqlEscape } from "./model";
 
 describe("compute", () => {
   const cases: Array<{
@@ -152,6 +152,31 @@ describe("SQL 만들기", () => {
     const { insertCheck, deleteCheck } = await import("./dolt");
     for (const s of [insertCheck("h1", "2026-08-21"), deleteCheck("h1", "2026-08-21")]) {
       expect(s.replace(/;$/, "")).not.toContain(";");
+    }
+  });
+});
+
+describe("isDbName", () => {
+  it("owner/name만 받는다", () => {
+    expect(isDbName("benelog/habit-chain")).toBe(true);
+    expect(isDbName("a_b/c-d")).toBe(true);
+  });
+
+  it("두 토막이 아니거나 이상한 글자가 섞이면 거른다", () => {
+    for (const bad of ["", "habit-chain", "a/b/c", "a/", "/b", "a b/c", "a/b?q=1", "../etc", 42, null]) {
+      expect(isDbName(bad)).toBe(false);
+    }
+  });
+});
+
+describe("isToken", () => {
+  it("헤더에 실을 수 있는 글자만 받는다", () => {
+    expect(isToken("dhat.v1.abcdefghijklmnop")).toBe(true);
+  });
+
+  it("공백과 줄바꿈은 거른다 — 헤더가 조작될 수 있다", () => {
+    for (const bad of ["", "short", "tok en1234", "tok\r\nX-Evil: 1", "토큰토큰토큰토큰", null]) {
+      expect(isToken(bad)).toBe(false);
     }
   });
 });
