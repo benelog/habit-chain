@@ -488,12 +488,40 @@ window.habitChain = {
     document.getElementById("set-db").value = db;
     document.getElementById("set-token").value = token;
     this.syncExport();
+
+    // DB가 비면 읽을 곳이 없다. 설정을 닫아 봐야 안내 문구만 보게 되니 열어 둔다.
     if (db === "") {
       this.status("DB 이름이 비어 있어 읽을 사슬이 없습니다.", true);
-    } else {
-      this.status(token === "" ? "저장했습니다. 토큰이 없어 읽기만 됩니다." : "저장했습니다.", false);
+      this.reload();
+      return;
     }
-    htmx.trigger("#habits", "load");
+
+    // 저장이 끝나면 설정에는 더 볼 것이 없다. 닫고, 그 자리에서 새 DB를 읽는다.
+    document.getElementById("settings").close();
+    this.say(token === "" ? "저장했습니다. 토큰이 없어 읽기만 됩니다." : "저장했습니다. 사슬을 다시 읽습니다.");
+    this.reload();
+  },
+  /**
+   * reload는 목록을 다시 읽는다.
+   *
+   * htmx.trigger("#habits", "load")로는 안 된다. hx-trigger="load"인 요소에
+   * htmx는 리스너를 걸지 않고 처음 한 번만 발동시키기 때문이다(htmx.js의
+   * addTriggerHandler). 그래서 저장을 눌러도 화면은 그대로였고 새로고침해야
+   * 새 DB가 보였다. 이제 요청을 직접 낸다.
+   *
+   * source를 넘기는 것이 중요하다. hx-headers는 상속되는 속성이라, 이 요소에서
+   * body까지 거슬러 올라가야 DB와 토큰이 헤더에 실린다.
+   */
+  reload() {
+    const el = document.getElementById("habits");
+    if (!el) return;
+    el.innerHTML = '<p class="sr-only">불러오는 중</p><div class="sk" aria-hidden="true"><div></div><div></div></div>';
+    htmx.ajax("GET", "/habits", { source: el, target: el, swap: "innerHTML" });
+  },
+  // 화면이 바뀐 이유를 스크린 리더에 한 줄로 알린다. 서버의 renderLive와 같은 자리다.
+  say(msg) {
+    const el = document.getElementById("live");
+    if (el) el.textContent = msg;
   },
   // 입력란에서 Enter를 눌러도 저장된다. 설정은 form이 아니라 dialog 안이라 직접 잇는다.
   enterSaves(event) {
@@ -528,7 +556,7 @@ window.habitChain = {
     document.getElementById("set-token").value = "";
     this.syncExport();
     this.status("이 브라우저에서 지웠습니다.", false);
-    htmx.trigger("#habits", "load");
+    this.reload();
   },
   clearToast() {
     document.getElementById("toast").innerHTML = "";
