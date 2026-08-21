@@ -6,25 +6,36 @@
  * 그 덕에 DoltHub의 CORS 동작에 기대는 부분이 사라졌고 DB 이름도 밖으로 나가지 않는다.
  *
  * DB와 토큰은 서버가 아니라 사용자가 가진다. 설정에 넣은 값이 요청마다 헤더로 온다:
- *   X-Dolt-DB     — owner/name. 없으면 서버의 DEFAULT_DB를 읽는다.
+ *   X-Dolt-DB     — owner/name. 없으면 읽을 곳이 없다. 목록 자리에 설정 안내가 대신 온다.
  *   X-Dolt-Token  — DoltHub → Settings → Tokens 에서 발급. 쓰기에만 쓴다.
  *
  * 서버에는 토큰이 없다. 그래서 공유 비밀(예전의 WRITE_KEY)로 쓰기를 막을 일도 없다 —
  * 자기 토큰을 넣은 사람이 자기 DB에 쓸 뿐이고, 남의 DB에는 애초에 쓸 수가 없다.
  *
+ * 서버에는 기본 DB도 없다. 예전에는 설정이 빈 사람에게 남의 DB를 읽어 보여 줬는데,
+ * 그러면 화면에 뜬 사슬이 누구 것인지가 불분명하고 체크는 또 안 된다.
+ * 이제 DB가 없으면 사슬 대신 설정 안내가 뜬다.
+ *
  * 변수:
- *   DEFAULT_DB    — 설정이 비었을 때 읽을 DB
  *   DOLT_BRANCH   — 기본 main
  */
 
 import * as dolt from "./dolt";
 import { compute, datesOf, isDateStr, isDbName, isToken } from "./model";
 import type { Habit, State } from "./model";
-import { renderDay, renderError, renderHabits, renderLive, renderOneCard, renderToast, shell } from "./render";
+import {
+  renderDay,
+  renderError,
+  renderHabits,
+  renderLive,
+  renderOneCard,
+  renderSetup,
+  renderToast,
+  shell,
+} from "./render";
 
 interface Env {
   ASSETS: Fetcher;
-  DEFAULT_DB?: string;
   DOLT_BRANCH?: string;
 }
 
@@ -46,11 +57,7 @@ export default {
       return new Response(shell(), { headers: HTML });
     }
     if (path === "/api/health") {
-      return json({
-        ok: true,
-        defaultDb: (env.DEFAULT_DB || "").trim(),
-        branch: env.DOLT_BRANCH || "main",
-      });
+      return json({ ok: true, branch: env.DOLT_BRANCH || "main" });
     }
     if (path === "/schema.sql") {
       return new Response(dolt.SCHEMA_SQL, {
@@ -94,6 +101,11 @@ export default {
 };
 
 async function handleList(request: Request, ctx: Ctx): Promise<Response> {
+  // 설정이 비었다. 실패가 아니라 아직 시작하지 않은 것이라, 200에 안내를 담아 보낸다.
+  if (ctx.db === "") {
+    return new Response(renderSetup(), { headers: HTML });
+  }
+
   // 목록이 실패하면 보여 줄 게 없다. 토스트가 아니라 화면 전체로 말한다.
   const problem = dbProblem(ctx);
   if (problem) {
@@ -230,14 +242,12 @@ function announce(state: State, habitID: string, date: string, wasOn: boolean, t
 /**
  * ctxOf는 이번 요청의 대상을 정한다.
  *
- * 설정에 DB를 넣지 않은 사람에게도 화면은 보여야 한다. 그래서 헤더가 비었으면
- * 서버의 기본 DB로 떨어진다 — 읽기는 토큰이 필요 없어서 그것만으로 충분하다.
- * 토큰은 떨어질 곳이 없다. 안 넣었으면 쓰기가 막힌다.
+ * 떨어질 기본값이 없다. DB가 비면 읽기는 handleList가 설정 안내로 받고,
+ * 쓰기는 requireWrite가 토스트로 막는다. 토큰도 마찬가지다 — 안 넣었으면 쓰기가 막힌다.
  */
 function ctxOf(request: Request, env: Env): Ctx {
-  const sent = (request.headers.get("X-Dolt-DB") || "").trim();
   return {
-    db: sent || (env.DEFAULT_DB || "").trim(),
+    db: (request.headers.get("X-Dolt-DB") || "").trim(),
     token: (request.headers.get("X-Dolt-Token") || "").trim(),
     branch: env.DOLT_BRANCH || "main",
   };

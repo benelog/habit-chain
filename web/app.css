@@ -213,8 +213,9 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 .dow.sun { color: color-mix(in oklab, var(--break) 60%, var(--muted)); }
 /* 주가 세로로 흐르니 달 이름은 왼쪽 여백에 붙는다. */
 .mon {
-  font-size: 9.5px; color: var(--muted); white-space: nowrap;
-  letter-spacing: -.02em;
+  font-size: 10.5px; color: var(--text); white-space: nowrap;
+  letter-spacing: -.02em; opacity: .72;
+  font-variation-settings: "wdth" 92, "wght" 600;
 }
 
 .cell {
@@ -224,18 +225,44 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   background: var(--panel-2);
   border: 1px solid transparent;
   padding: 0;
-  transition: background .14s ease, border-color .14s ease, transform .08s ease;
+  display: grid; place-content: center;
+  color: var(--muted);
+  transition: background .14s ease, border-color .14s ease, color .14s ease, transform .08s ease;
 }
+
+/* 칸 안의 날짜. 사슬 모양만으로는 "언제 체크했는지"를 셀 수가 없다.
+   연결부는 칸 바깥(gap)에 그려지니 숫자가 들어가도 사슬은 그대로다.
+   끊긴 칸의 빗금(::after)이 위를 지나가므로 숫자를 한 겹 올려 둔다. */
+.cell > span {
+  position: relative; z-index: 1;
+  font-size: 10.5px; line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-variation-settings: "wdth" 96, "wght" 550;
+  letter-spacing: -.02em;
+  pointer-events: none;
+}
+/* 1일은 "8/1"로 적는다. 그 한 칸이 그리드 안에서 달의 경계가 된다. */
+.cell.first > span { font-size: 9px; font-variation-settings: "wdth" 88, "wght" 650; letter-spacing: -.04em; }
 .cell:hover { border-color: var(--habit); }
 .cell.future {
   background: transparent; border: 1px dashed var(--line);
+  color: color-mix(in oklab, var(--muted) 42%, transparent);
   cursor: default; pointer-events: none;
 }
-.cell.done { background: var(--habit); border-color: transparent; }
+/* 채운 칸의 숫자는 사슬 위에 얹힌다. 습관 색이 무엇이든 읽히도록 그 색을 어둡게 깐다. */
+.cell.done {
+  background: var(--habit); border-color: transparent;
+  color: color-mix(in oklab, var(--habit) 16%, #000);
+}
+.cell.done > span { font-variation-settings: "wdth" 96, "wght" 650; }
 /* 오늘은 아직 안 채웠을 때만 표시한다. 채운 뒤에도 테를 두르면 그 테가
    사슬 연결부를 가로질러, 이어져 있는 날이 끊긴 것처럼 보인다.
    이미 채웠다면 오늘이 어디인지는 알 필요도 없다 — 그게 마지막 칸이다. */
 .cell.today:not(.done) { box-shadow: inset 0 0 0 2px var(--habit); }
+/* 오늘 칸의 숫자만은 채웠든 아니든 굵다. 날짜를 셀 때 기준점이 되는 칸이다. */
+.cell.today { color: var(--text); }
+.cell.today.done { color: color-mix(in oklab, var(--habit) 12%, #000); }
+.cell.today > span { font-variation-settings: "wdth" 104, "wght" 750; }
 /* 요청 중인 칸. hx-disabled-elt이 끈 그 칸이 방금 눌린 칸이다. */
 .card.htmx-request .cell[disabled]:not(.future) { animation: cellwait .8s ease-in-out infinite; }
 @keyframes cellwait { 0%, 100% { opacity: 1 } 50% { opacity: .35 } }
@@ -293,7 +320,29 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .empty h2 { color: var(--text); font-size: 16px; margin: 0 0 8px; letter-spacing: -.01em; }
 .empty p { margin: 0 0 4px; font-size: 13.5px; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; margin-top: 16px; }
+
+/* 설정이 비었을 때의 첫 화면. 빈 목록과 같은 껍데기를 쓰되 할 일을 순서로 세운다. */
+.empty.setup { text-align: left; padding: 30px 24px; }
+.empty.setup h2 { text-align: center; }
+.empty.setup > p { margin: 0 auto; max-width: 42ch; }
+.empty.setup b { color: var(--text); font-weight: 600; }
+.setup-steps {
+  margin: 16px auto 0; padding-left: 20px; max-width: 42ch;
+  font-size: 13px; line-height: 1.75;
+}
+.setup-steps li { margin: 0 0 3px; }
+.setup-steps code, .hint code, .setup-note code {
+  font-size: 11.5px; background: var(--panel-2); border-radius: 5px;
+  padding: 1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.setup-note {
+  margin: 14px auto 0; max-width: 42ch;
+  font-size: 12.5px; opacity: .85;
+}
+
+/* 설정이 비었을 때는 습관을 더할 수도 없다. 눌러 봐야 토스트만 뜨는 폼은 숨긴다. */
+#habits:has(.setup) ~ .add-form { display: none; }
 .chip {
   font-size: 12.5px; font-weight: 500; padding: 6px 11px; border-radius: 999px;
   background: transparent; color: var(--muted);
@@ -395,6 +444,9 @@ legend { font-size: 12.5px; font-weight: 650; color: var(--text); padding: 0; }
   font-size: 11.5px; background: var(--panel-2); border-radius: 5px;
   padding: 1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+/* 링크도 무채색이다. 브라우저 기본 파랑은 이 껍데기에서 유일하게 튀는 색이 된다. */
+.hint a, .empty a { color: var(--text); text-decoration-color: var(--muted); text-underline-offset: 2px; }
+.hint a:hover, .empty a:hover { text-decoration-color: var(--text); }
 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 label input[type=password], label input[type=text] {
   display: block; width: 100%; margin-top: 5px;
@@ -403,6 +455,13 @@ label input[type=password], label input[type=text] {
 }
 label input:focus { border-color: var(--muted); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+
+/* 저장 버튼을 눌렀을 때의 한 줄. 자리는 늘 잡아 두어 눌러도 화면이 뛰지 않는다. */
+.set-status {
+  margin: 8px 0 0; min-height: 1.4em;
+  font-size: 12px; color: var(--muted);
+}
+.set-status.bad { color: var(--break); }
 
 .confirm { padding: 20px; }
 .confirm h2 { margin: 0 0 8px; font-size: 15px; letter-spacing: -.01em; }

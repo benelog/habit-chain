@@ -99,6 +99,30 @@ function renderEmpty(): string {
 }
 
 /**
+ * 설정이 비었을 때 첫 화면에 놓는 안내.
+ *
+ * 오류가 아니라 온보딩이다. 그래서 renderError를 쓰지 않는다 — 저기의
+ * `다시 불러오기`는 여기서 아무것도 고치지 못한다. 고칠 곳은 설정 하나뿐이라
+ * 그리로 가는 버튼만 둔다.
+ */
+export function renderSetup(): string {
+  return `<div class="empty setup">
+    <h2>DoltHub DB를 연결하세요</h2>
+    <p>이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.</p>
+    <ol class="setup-steps">
+      <li>DoltHub에 DB를 만들고, <b>스키마 SQL</b>을 한 번 실행해 커밋합니다.</li>
+      <li>DoltHub의 <code>Settings → Tokens</code>에서 토큰을 발급합니다.</li>
+      <li>설정에 <code>owner/name</code>과 토큰을 넣고 <b>저장</b>합니다.</li>
+    </ol>
+    <p class="setup-note">DB 이름만 넣어도 공개 DB는 읽힙니다. 기록하려면 토큰까지 있어야 합니다.</p>
+    <div class="chips">
+      <button class="primary" type="button" onclick="document.getElementById('settings').showModal()">설정 열기</button>
+      <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
+    </div>
+  </div>`;
+}
+
+/**
  * 오늘 요약. 이 앱을 열어서 답을 얻고 싶은 질문은 하나다 — 오늘 다 했나?
  * 그래서 목록 맨 위에 그 답만 둔다.
  */
@@ -196,6 +220,9 @@ function renderStats(s: Stats): string {
  * 말과 화면이 어긋난다.
  *
  * 주가 세로로 흐르므로 달 이름은 맨 왼쪽 칸에 붙는다.
+ *
+ * 칸 안에는 날짜를 적는다. 사슬 모양만으로는 "언제 체크했는지"를 셀 수가 없다.
+ * 연결부는 칸 바깥(gap)에 그려지므로 숫자가 들어가도 사슬은 그대로다.
  */
 function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
   const end = addDays(today, 6 - dayOfWeek(today));
@@ -230,9 +257,11 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
     const d = dates[i]!;
 
     if (i % 7 === 0) {
-      const week = dates.slice(i, i + 7);
-      const starts = i === 0 || week.some((x) => x.endsWith("-01"));
-      const label = starts ? `${Number((week.find((x) => x.endsWith("-01")) ?? d).slice(5, 7))}월` : "";
+      // 줄의 첫 칸이 속한 달을 적고, 달이 바뀐 줄에만 붙인다.
+      // 예전에는 "1일을 품은 줄"에 붙였는데, 그러면 7월이 엿새인 줄에 8월이 붙어
+      // 줄 전체를 잘못 읽게 만든다. 달의 경계는 "8/1" 칸이 이미 짚어 준다.
+      const prev = i === 0 ? "" : dates[i - 7]!.slice(0, 7);
+      const label = d.slice(0, 7) === prev ? "" : `${Number(d.slice(5, 7))}월`;
       parts.push(`<div class="mon" aria-hidden="true">${label}</div>`);
     }
 
@@ -251,13 +280,21 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
     }
     if (d === today) cls += " today";
 
+    // 달이 바뀌는 칸만 "8/1"로 적는다. 그 한 칸이 그리드 안에서 달의 경계가 된다.
+    const dayNum = Number(d.slice(8, 10));
+    const shown = dayNum === 1 ? `${Number(d.slice(5, 7))}/1` : String(dayNum);
+    if (dayNum === 1) cls += " first";
+
     const state = future ? "" : done[i] ? " 완료" : i === broke ? " 미완료, 여기서 사슬이 끊겼습니다" : " 미완료";
     const label = `${md(d)} ${DOW[dayOfWeek(d)]}요일${state}`;
     const attrs = future
       ? `disabled tabindex="-1"`
       : `id="c-${esc(h.id)}-${d}" aria-pressed="${done[i]}" tabindex="${d === today ? 0 : -1}" ${toggleAttrs(h.id, d)}`;
 
-    parts.push(`<button type="button" class="${cls}" ${attrs} aria-label="${label}"></button>`);
+    parts.push(
+      `<button type="button" class="${cls}" ${attrs} aria-label="${label}" title="${label}">` +
+        `<span aria-hidden="true">${shown}</span></button>`,
+    );
   }
 
   parts.push("</div>");
@@ -354,28 +391,29 @@ export function shell(): string {
       <fieldset>
         <legend>DoltHub</legend>
         <p class="hint">
-          기록의 원본은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>의 DB입니다.
-          비워 두면 이 서버의 기본 DB(<code id="db-name">…</code>)를 <b>읽기만</b> 합니다.
-          자기 DB 이름과 토큰을 넣으면 그때부터 그쪽에 기록됩니다.
+          이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.
+          <b>DB 이름이 있어야 사슬을 읽고</b>, 토큰까지 있어야 기록됩니다.
+          비워 두면 이 앱은 아무것도 보여 주지 못합니다.
         </p>
         <label for="set-db">DB 이름
-          <input id="set-db" type="text" placeholder="owner/name" spellcheck="false"
+          <input id="set-db" type="text" placeholder="owner/name" spellcheck="false" autofocus
             autocapitalize="none" autocorrect="off" autocomplete="off"
-            onchange="habitChain.saveDb(this.value)">
+            onkeydown="habitChain.enterSaves(event)">
         </label>
         <label for="set-token">토큰
           <input id="set-token" type="password" placeholder="DoltHub → Settings → Tokens" spellcheck="false"
             autocapitalize="none" autocorrect="off" autocomplete="new-password"
-            onchange="habitChain.saveToken(this.value)">
+            onkeydown="habitChain.enterSaves(event)">
         </label>
         <p class="hint">
-          토큰은 서버에 저장되지 않습니다. 이 브라우저에만 남고 요청마다 헤더로 실려,
-          서버는 그걸 DoltHub에 그대로 넘길 뿐입니다.
-          <b>공용 컴퓨터에서는 넣지 마세요</b> — 그 토큰으로 할 수 있는 일은 이 앱 밖까지 갑니다.
+          토큰은 서버가 아닌 이 브라우저에만 저장됩니다.
+          <b>공용 컴퓨터에서는 토큰을 입력했다면 사용을 끝낸 후에 삭제해주세요.</b>
         </p>
         <div class="row">
-          <button type="button" class="ghost" onclick="habitChain.forget()">이 브라우저에서 지우기</button>
+          <button type="button" class="primary" onclick="habitChain.save()">저장</button>
+          <button type="button" class="ghost" onclick="habitChain.forget()">저장한 값 지우기</button>
         </div>
+        <p id="set-status" class="set-status" role="status"></p>
       </fieldset>
 
       <fieldset>
@@ -422,14 +460,58 @@ window.habitChain = {
   token() {
     try { return localStorage.getItem("habit-chain.token") || ""; } catch { return ""; }
   },
-  // DB를 바꾸면 화면에 있는 기록은 남의 것이다. 그 자리에서 다시 읽는다.
-  saveDb(v) {
-    try { localStorage.setItem("habit-chain.db", v.trim()); } catch {}
+  /**
+   * 설정은 누를 때만 저장된다.
+   *
+   * 예전에는 input의 onchange가 곧 저장이었다. 토큰을 반쯤 붙여 넣고 포커스를
+   * 옮기기만 해도 그 반쪽이 저장됐고, 되돌릴 자리가 없었다. 이제 저장은 버튼
+   * 하나이고 지우는 버튼이 그 옆에 있다.
+   *
+   * DB를 바꾸면 화면에 있는 기록은 남의 것이다. 그래서 저장은 곧 다시 읽기다.
+   */
+  save() {
+    const db = document.getElementById("set-db").value.trim();
+    const token = document.getElementById("set-token").value.trim();
+    // 슬래시를 [/]로 적는다. 이 스크립트는 템플릿 리터럴 안에 있어서 \\/로 쓰면
+    // 이스케이프가 한 겹 풀려 정규식이 조각나고, 스크립트 전체가 파싱에 실패한다.
+    if (db !== "" && !/^[A-Za-z0-9_-]{1,64}[/][A-Za-z0-9_-]{1,64}$/.test(db)) {
+      this.status("DB 이름은 owner/name 형식이어야 합니다.", true);
+      return;
+    }
+    try {
+      localStorage.setItem("habit-chain.db", db);
+      localStorage.setItem("habit-chain.token", token);
+    } catch {
+      this.status("이 브라우저에 저장할 수 없습니다.", true);
+      return;
+    }
+    document.getElementById("set-db").value = db;
+    document.getElementById("set-token").value = token;
     this.syncExport();
+    if (db === "") {
+      this.status("DB 이름이 비어 있어 읽을 사슬이 없습니다.", true);
+    } else {
+      this.status(token === "" ? "저장했습니다. 토큰이 없어 읽기만 됩니다." : "저장했습니다.", false);
+    }
     htmx.trigger("#habits", "load");
   },
-  saveToken(v) {
-    try { localStorage.setItem("habit-chain.token", v.trim()); } catch {}
+  // 입력란에서 Enter를 눌러도 저장된다. 설정은 form이 아니라 dialog 안이라 직접 잇는다.
+  enterSaves(event) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    this.save();
+  },
+  // 눌렀는데 아무 일도 안 일어난 것처럼 보이지 않게, 결과를 한 줄로 말한다.
+  status(msg, bad) {
+    const el = document.getElementById("set-status");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.toggle("bad", !!bad);
+    clearTimeout(this._statusTimer);
+    this._statusTimer = setTimeout(() => {
+      el.textContent = "";
+      el.classList.remove("bad");
+    }, 5000);
   },
   // 내보내기는 링크다. htmx 요청이 아니라서 헤더가 안 붙으니 DB를 주소에 담는다.
   syncExport() {
@@ -445,6 +527,7 @@ window.habitChain = {
     document.getElementById("set-db").value = "";
     document.getElementById("set-token").value = "";
     this.syncExport();
+    this.status("이 브라우저에서 지웠습니다.", false);
     htmx.trigger("#habits", "load");
   },
   clearToast() {
@@ -471,10 +554,6 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("set-db").value = window.habitChain.db();
   document.getElementById("set-token").value = window.habitChain.token();
   window.habitChain.syncExport();
-
-  fetch("/api/health").then((r) => r.json()).then((cfg) => {
-    if (cfg.defaultDb) document.getElementById("db-name").textContent = cfg.defaultDb;
-  }).catch(() => {});
 });
 
 /* 쓰기 왕복이 1.5~2초다. 그동안 아무 표시가 없으면 눌린 건지 알 수 없다. */

@@ -18,8 +18,7 @@
   "pages_build_output_dir": "dist",
   "compatibility_date": "2026-08-01",
   "vars": {
-    // 설정이 빈 사람에게 보여 줄 DB. 토큰이 없으면 읽기만 된다.
-    "DEFAULT_DB": "benelog/habit-chain",
+    // 서버가 아는 것은 브랜치 하나뿐이다. DB는 사용자가 설정에 넣고 헤더로 보낸다.
     "DOLT_BRANCH": "main"
   }
 }
