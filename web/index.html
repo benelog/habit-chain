@@ -22,7 +22,7 @@
   <header class="topbar">
     <h1><span class="logo">⛓</span> Habit&nbsp;Chain</h1>
     <div class="topbar-actions">
-      <span id="sync-badge" class="badge" title="동기화 상태">로컬</span>
+      <span id="sync-badge" class="badge" title="동기화 상태">…</span>
       <button id="btn-settings" class="icon-btn" aria-label="설정" title="설정">⚙</button>
     </div>
   </header>
@@ -47,7 +47,7 @@
       <fieldset>
         <legend>DoltHub 저장소</legend>
         <p class="hint">
-          사용자별 데이터는 각자의 DoltHub DB로 나뉩니다.
+          기록의 원본은 이 DB입니다. 앱은 켤 때마다 여기서 읽어 오고, 브라우저에는 이 설정만 남습니다.
           이 앱을 서빙하는 서버가 알려준 값이 자동으로 채워지니, 다른 DB를 보고 싶을 때만 고치면 됩니다.
         </p>
         <label>DB 이름
@@ -66,14 +66,10 @@
         <legend>DoltHub에 반영</legend>
         <p class="hint" id="write-hint">
           브라우저는 DoltHub에 직접 쓸 수 없습니다 — 쓰기 API가 CORS preflight를 막습니다.
-          이 앱을 서빙하는 서버가 그 일을 대신합니다.
+          이 앱을 서빙하는 서버가 그 일을 대신합니다. 기록은 누를 때마다 곧바로 보냅니다.
         </p>
         <label id="write-key-row" hidden>쓰기 키
           <input id="set-write-key" type="password" placeholder="서버의 WRITE_KEY (이 브라우저에만 저장)" spellcheck="false">
-        </label>
-        <label class="check">
-          <input id="set-auto" type="checkbox">
-          <span>기록할 때마다 자동으로 밀어넣기</span>
         </label>
         <div class="row">
           <button id="btn-push" type="button" class="secondary">지금 반영 <span id="queue-count" class="pill">0</span></button>
@@ -84,7 +80,6 @@
       <fieldset>
         <legend>데이터</legend>
         <div class="row">
-          <button id="btn-snapshot" type="button" class="ghost">로컬 전체를 DoltHub로 덮어쓰기</button>
           <button id="btn-export" type="button" class="ghost">JSON 내보내기</button>
         </div>
         <p id="status" class="status" role="status"></p>

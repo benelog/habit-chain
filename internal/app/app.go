@@ -43,15 +43,15 @@ type App struct {
 	pendingDelete string // 삭제 확인을 기다리는 습관 id
 	pushing       bool   // push가 도는 중인지. 큐를 두 곳에서 자르지 않기 위해 필요하다
 	serverWrites  bool   // 서버가 DoltHub 쓰기를 할 수 있는 상태인지
+	loadErr       string // 마지막 불러오기 실패 메시지. 비어 있으면 정상이다
 	doc           js.Value
 }
 
-// New는 저장된 데이터를 읽어 앱을 만든다.
+// New는 이 브라우저에 저장된 설정만 읽어 앱을 만든다.
+// 습관과 기록은 DoltHub에서 받아 메모리에만 둔다.
 func New() *App {
 	return &App{
-		state:    store.LoadState(),
 		settings: store.LoadSettings(),
-		queue:    store.LoadQueue(),
 		today:    time.Now(),
 		doc:      js.Global().Get("document"),
 	}
@@ -66,12 +66,28 @@ func (a *App) Run() {
 
 	a.bind()
 	a.fillSettings()
-	a.render()
+	a.el("habits").Set("innerHTML", `<div class="empty"><p>불러오는 중…</p></div>`)
+	a.updateBadge()
 
-	// 서버가 알려주는 기본값은 화면을 띄운 다음에 받는다. 없어도 앱은 그냥 돈다.
-	go a.adoptServerConfig()
+	// 원본이 DoltHub에 있으므로 화면을 띄운 뒤 곧바로 읽어 온다.
+	go a.boot()
 
 	select {} // wasm 모듈이 종료되지 않도록 붙잡아 둔다
+}
+
+// boot는 서버가 알려준 기본값을 받아 첫 데이터를 읽어 온다.
+//
+// 로컬에 남는 데이터가 없으므로 여기서 실패하면 화면이 비는 것과 같다.
+// 그래서 실패도 반드시 화면에 남긴다.
+func (a *App) boot() {
+	a.adoptServerConfig()
+
+	if a.settings.DoltDB == "" {
+		a.loadErr = "DoltHub DB 이름이 설정되지 않았습니다. 설정에서 넣어 주세요."
+		a.render()
+		return
+	}
+	a.pull()
 }
 
 func (a *App) bind() {
@@ -106,13 +122,12 @@ func (a *App) bind() {
 	})
 
 	// 설정 입력은 바뀔 때마다 곧바로 저장한다.
-	for _, id := range []string{"set-db", "set-branch", "set-write-key", "set-auto"} {
+	for _, id := range []string{"set-db", "set-branch", "set-write-key"} {
 		a.on(a.el(id), "change", func(js.Value) { a.saveSettings() })
 	}
 
 	a.on(a.el("btn-pull"), "click", func(js.Value) { go a.pull() })
 	a.on(a.el("btn-push"), "click", func(js.Value) { go a.push(true) })
-	a.on(a.el("btn-snapshot"), "click", func(js.Value) { a.snapshot() })
 	a.on(a.el("btn-schema"), "click", func(js.Value) {
 		a.copy(SchemaSQL, "스키마 SQL을 복사했습니다. DoltHub의 SQL 콘솔에 붙여넣고 커밋하세요.")
 	})
@@ -154,8 +169,8 @@ func (a *App) updateBadge() {
 	badge := a.el("sync-badge")
 	switch {
 	case a.settings.DoltDB == "":
-		badge.Set("textContent", "로컬")
-		badge.Set("className", "badge")
+		badge.Set("textContent", "DB 없음")
+		badge.Set("className", "badge err")
 	case len(a.queue) > 0:
 		badge.Set("textContent", fmt.Sprintf("미반영 %d", len(a.queue)))
 		badge.Set("className", "badge err")
@@ -180,18 +195,15 @@ func (a *App) busy(msg string) {
 
 // ── 데이터 변경 ───────────────────────────────────────
 
-func (a *App) save() {
-	store.SaveState(a.state)
-	store.SaveQueue(a.queue)
-}
-
-// enqueue는 DoltHub에 반영할 SQL을 큐에 쌓는다.
+// enqueue는 DoltHub에 반영할 SQL을 쌓고 곧바로 보낸다.
+//
+// 큐는 메모리에만 있다. 보내기 전에 새로고침하면 그 변경은 사라지므로 미루지 않는다.
 func (a *App) enqueue(stmt string) {
+	// 불러오기에 실패한 화면에서도 추가는 된다. 그 뒤로는 실패 화면 대신
+	// 실제 목록을 보여줘야 방금 만든 습관이 보인다.
+	a.loadErr = ""
 	a.queue = append(a.queue, stmt)
-	a.save()
-	if a.settings.AutoSync {
-		go a.push(false)
-	}
+	go a.push(false)
 }
 
 func (a *App) toggle(habitID, date string) {
@@ -204,7 +216,6 @@ func (a *App) toggle(habitID, date string) {
 		a.enqueue(dolt.DeleteCheck(habitID, date))
 	}
 	a.pendingDelete = ""
-	a.save()
 	a.render()
 }
 
@@ -217,7 +228,6 @@ func (a *App) addHabit(name, color string) {
 	}
 	a.state.Habits = append(a.state.Habits, h)
 	a.enqueue(dolt.UpsertHabit(h))
-	a.save()
 	a.render()
 }
 
@@ -238,7 +248,6 @@ func (a *App) confirmDelete(id string) {
 	a.state.RemoveHabit(id)
 	a.enqueue(dolt.DeleteHabit(id))
 	a.pendingDelete = ""
-	a.save()
 	a.render()
 }
 
@@ -248,7 +257,6 @@ func (a *App) fillSettings() {
 	a.el("set-db").Set("value", a.settings.DoltDB)
 	a.el("set-branch").Set("value", a.settings.DoltBranch)
 	a.el("set-write-key").Set("value", a.settings.WriteKey)
-	a.el("set-auto").Set("checked", a.settings.AutoSync)
 	a.el("queue-count").Set("textContent", fmt.Sprintf("%d", len(a.queue)))
 }
 
@@ -256,7 +264,6 @@ func (a *App) saveSettings() {
 	a.settings.DoltDB = strings.TrimSpace(a.el("set-db").Get("value").String())
 	a.settings.DoltBranch = strings.TrimSpace(a.el("set-branch").Get("value").String())
 	a.settings.WriteKey = strings.TrimSpace(a.el("set-write-key").Get("value").String())
-	a.settings.AutoSync = a.el("set-auto").Get("checked").Bool()
 	if a.settings.DoltBranch == "" {
 		a.settings.DoltBranch = "main"
 	}
@@ -266,49 +273,79 @@ func (a *App) saveSettings() {
 
 // ── 동기화 ───────────────────────────────────────────
 
+// pull은 DoltHub의 내용을 그대로 가져와 화면의 원본으로 삼는다.
+//
+// 예전에는 로컬과 합쳤지만, 이제 원본이 저쪽 하나뿐이므로 통째로 갈아끼운다.
+// 그래야 다른 기기에서 지운 습관이 여기서도 사라진다.
 func (a *App) pull() {
 	if a.settings.DoltDB == "" {
 		a.status("먼저 DoltHub DB 이름을 넣으세요.", "err")
+		return
+	}
+	// 아직 못 보낸 변경은 메모리에만 있다. 갈아끼우면 그대로 사라진다.
+	if len(a.queue) > 0 {
+		a.status(fmt.Sprintf("미반영 %d개를 먼저 보내세요. 지금 불러오면 그 변경이 사라집니다.",
+			len(a.queue)), "err")
 		return
 	}
 	a.busy("불러오는 중…")
 
 	remote, err := dolt.Pull(a.settings.DoltDB, a.settings.DoltBranch)
 	if err != nil {
+		a.loadErr = err.Error()
+		a.render()
 		a.status("불러오기 실패: "+err.Error(), "err")
 		a.updateBadge()
 		return
 	}
 
-	added := a.merge(remote)
-	a.save()
+	a.state = remote
+	a.loadErr = ""
 	a.render()
-	a.status(fmt.Sprintf("불러왔습니다 — 습관 %d개, 기록 %d개(새로 %d개 추가).",
-		len(a.state.Habits), len(a.state.Checks), added), "ok")
+	a.status(fmt.Sprintf("불러왔습니다 — 습관 %d개, 기록 %d개.",
+		len(a.state.Habits), len(a.state.Checks)), "ok")
+
+	a.reapLegacy()
 }
 
-// merge는 원격 데이터를 로컬에 합친다.
-// 기록은 지우지 않고 더하기만 한다 — 다른 기기에서 켠 체크가 사라지면 안 되기 때문이다.
-func (a *App) merge(remote model.State) int {
+// reapLegacy는 이전 버전이 LocalStorage에 남긴 기록을 정리한다.
+//
+// DoltHub에 다 들어 있으면 조용히 지우고, 거기 없는 기록이 하나라도 있으면
+// 그대로 두고 알린다. 못 올린 기록을 말없이 날리지 않기 위해서다.
+func (a *App) reapLegacy() {
+	old, ok := store.LegacyState()
+	if !ok {
+		return
+	}
+
+	// 체크뿐 아니라 습관도 봐야 한다. 기록이 하나도 없는 습관은
+	// 체크만 비교하면 "다 올라가 있음"으로 보여 그대로 지워진다.
 	known := make(map[string]bool, len(a.state.Habits))
 	for _, h := range a.state.Habits {
 		known[h.ID] = true
 	}
-	for _, h := range remote.Habits {
+	missing := 0
+	for _, h := range old.Habits {
 		if !known[h.ID] {
-			a.state.Habits = append(a.state.Habits, h)
+			missing++
 		}
 	}
 
 	idx := a.state.Index()
-	added := 0
-	for _, c := range remote.Checks {
+	for _, c := range old.Checks {
 		if !idx.Has(c.HabitID, c.Date) {
-			a.state.Checks = append(a.state.Checks, c)
-			added++
+			missing++
 		}
 	}
-	return added
+
+	if missing == 0 {
+		store.DropLegacy()
+		return
+	}
+	a.status(fmt.Sprintf(
+		"이 브라우저에 예전 버전이 남긴 항목 %d개가 있는데 DoltHub에는 없습니다. "+
+			"지우지 않고 두었습니다 — 필요하면 개발자 도구에서 habit-chain.state 값을 꺼내세요.",
+		missing), "err")
 }
 
 // push는 큐에 쌓인 SQL을 쓰기 프록시로 보낸다.
@@ -337,7 +374,13 @@ func (a *App) push(verbose bool) {
 	}
 
 	a.pushing = true
-	defer func() { a.pushing = false }()
+	drain := false
+	defer func() {
+		a.pushing = false
+		if drain {
+			go a.push(false)
+		}
+	}()
 
 	a.busy("보내는 중…")
 	msg := fmt.Sprintf("habit-chain: %d개 변경 반영", len(a.queue))
@@ -352,7 +395,6 @@ func (a *App) push(verbose bool) {
 		a.queue = a.queue[sent:]
 		a.settings.LastSynced = time.Now().Format(time.RFC3339)
 		store.SaveSettings(a.settings)
-		a.save()
 	}
 	a.render()
 
@@ -362,11 +404,11 @@ func (a *App) push(verbose bool) {
 		return
 	}
 
-	tail := ""
-	if len(a.queue) > 0 {
-		tail = fmt.Sprintf(" %d개가 남아 있습니다 — 한 번 더 누르세요.", len(a.queue))
-	}
-	a.status(fmt.Sprintf("%d개를 DoltHub에 반영했습니다.%s", sent, tail), "ok")
+	a.status(fmt.Sprintf("%d개를 DoltHub에 반영했습니다.", sent), "ok")
+
+	// 보내는 동안 들어온 변경이 남아 있으면 이어서 보낸다.
+	// 성공했을 때만 건다 — 실패에도 걸면 무한히 재시도한다.
+	drain = len(a.queue) > 0
 }
 
 // origin은 앱이 서빙되고 있는 곳이다. 쓰기 서버는 언제나 여기 붙어 있다.
@@ -420,20 +462,11 @@ func (a *App) adoptServerConfig() {
 	a.el("write-key-row").Set("hidden", !cfg.RequiresKey)
 	if !cfg.WriteConfigured {
 		a.el("write-hint").Set("textContent",
-			"이 서버에는 DoltHub 토큰이 설정되어 있지 않습니다. 기록은 로컬에만 남고, 아래에서 SQL을 복사해 직접 반영할 수 있습니다.")
+			"이 서버에는 DoltHub 토큰이 설정되어 있지 않습니다. 지금 한 기록은 이 탭에만 있고 새로고침하면 사라집니다 — 아래에서 SQL을 복사해 직접 반영하세요.")
 	}
 
 	a.fillSettings()
 	a.updateBadge()
-}
-
-// snapshot은 로컬 전체를 DoltHub에 덮어쓰는 SQL을 큐에 넣는다.
-func (a *App) snapshot() {
-	a.queue = dolt.Snapshot(a.state)
-	a.save()
-	a.render()
-	a.status(fmt.Sprintf("로컬 전체(SQL %d줄)를 대기열에 넣었습니다. 밀어넣기나 SQL 복사로 반영하세요.",
-		len(a.queue)), "ok")
 }
 
 // ── 브라우저 부수 기능 ────────────────────────────────

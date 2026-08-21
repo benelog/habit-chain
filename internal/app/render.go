@@ -17,6 +17,14 @@ var dowNames = [7]string{"일", "월", "화", "수", "목", "금", "토"}
 
 // renderHabits는 습관 목록 전체의 HTML을 만든다.
 func (a *App) renderHabits() string {
+	// 데이터가 로컬에 남지 않으므로 불러오기 실패는 곧 빈 화면이다.
+	// 그것을 "습관이 없음"으로 보여주면 안 된다.
+	if a.loadErr != "" {
+		return `<div class="empty">
+			<h2>불러오지 못했습니다</h2>
+			<p>` + html.EscapeString(a.loadErr) + `<br>설정에서 DB 이름을 확인하고 다시 불러오세요.</p>
+		</div>`
+	}
 	if len(a.state.Habits) == 0 {
 		return `<div class="empty">
 			<h2>아직 사슬이 없습니다</h2>

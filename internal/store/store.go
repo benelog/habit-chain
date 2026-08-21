@@ -1,6 +1,7 @@
-//go:build js && wasm
-
-// Package store는 브라우저 LocalStorage에 설정과 데이터를 보관한다.
+// Package store는 이 브라우저에만 남는 사용자 설정을 읽고 쓴다.
+//
+// LocalStorage에는 설정만 넣는다. 습관과 기록의 원본은 DoltHub이고,
+// 앱은 켤 때마다 거기서 읽어 메모리에만 들고 있는다.
 package store
 
 import (
@@ -10,18 +11,12 @@ import (
 	"github.com/benelog/habit-chain/internal/model"
 )
 
-const (
-	keyState    = "habit-chain.state"
-	keySettings = "habit-chain.settings"
-	keyQueue    = "habit-chain.queue"
-)
+const keySettings = "habit-chain.settings"
 
-// Settings는 사용자별 설정이다. 데이터 격리는 여기 적힌 DoltHub DB로 이뤄진다.
 type Settings struct {
 	DoltDB     string `json:"dolt_db"`     // "benelog/habit-chain" 형식
 	DoltBranch string `json:"dolt_branch"` // 기본 main
 	WriteKey   string `json:"write_key"`   // 쓰기 서버가 요구하는 공유 비밀
-	AutoSync   bool   `json:"auto_sync"`   // 체크할 때마다 곧바로 밀어넣기
 	LastSynced string `json:"last_synced"` // RFC3339
 }
 
@@ -37,7 +32,6 @@ func get(key string) string {
 
 func set(key, val string) { local().Call("setItem", key, val) }
 
-// LoadSettings는 저장된 설정을 읽는다. 없으면 기본값을 준다.
 func LoadSettings() Settings {
 	s := Settings{DoltBranch: "main"}
 	if raw := get(keySettings); raw != "" {
@@ -49,7 +43,6 @@ func LoadSettings() Settings {
 	return s
 }
 
-// SaveSettings는 설정을 LocalStorage에 쓴다.
 func SaveSettings(s Settings) {
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -58,38 +51,32 @@ func SaveSettings(s Settings) {
 	set(keySettings, string(b))
 }
 
-// LoadState는 습관과 체크 기록을 읽는다.
-func LoadState() model.State {
+// ── 이전 버전이 남긴 데이터 ────────────────────────────
+//
+// 예전에는 습관과 기록도 LocalStorage에 넣었다. 그 키들은 이제 읽지 않지만,
+// 아직 DoltHub에 못 올린 기록이 거기 남아 있을 수 있으므로 함부로 지우지 않는다.
+
+const (
+	legacyKeyState = "habit-chain.state"
+	legacyKeyQueue = "habit-chain.queue"
+)
+
+// LegacyState는 이전 버전이 남긴 기록을 읽는다. 없으면 ok가 false다.
+func LegacyState() (model.State, bool) {
+	raw := get(legacyKeyState)
+	if raw == "" {
+		return model.State{}, false
+	}
 	var st model.State
-	if raw := get(keyState); raw != "" {
-		_ = json.Unmarshal([]byte(raw), &st)
+	if err := json.Unmarshal([]byte(raw), &st); err != nil {
+		return model.State{}, false
 	}
-	return st
+	return st, true
 }
 
-// SaveState는 습관과 체크 기록을 쓴다.
-func SaveState(st model.State) {
-	b, err := json.Marshal(st)
-	if err != nil {
-		return
-	}
-	set(keyState, string(b))
-}
-
-// LoadQueue는 아직 DoltHub에 반영하지 못한 SQL 문들을 읽는다.
-func LoadQueue() []string {
-	var q []string
-	if raw := get(keyQueue); raw != "" {
-		_ = json.Unmarshal([]byte(raw), &q)
-	}
-	return q
-}
-
-// SaveQueue는 미반영 SQL 큐를 쓴다.
-func SaveQueue(q []string) {
-	b, err := json.Marshal(q)
-	if err != nil {
-		return
-	}
-	set(keyQueue, string(b))
+// DropLegacy는 이전 버전이 남긴 키를 지운다.
+// 그 내용이 DoltHub에 모두 들어 있다고 확인한 다음에만 부를 것.
+func DropLegacy() {
+	local().Call("removeItem", legacyKeyState)
+	local().Call("removeItem", legacyKeyQueue)
 }
