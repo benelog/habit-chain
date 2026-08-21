@@ -29,6 +29,7 @@ import {
   renderHabits,
   renderLive,
   renderOneCard,
+  renderPrepare,
   renderSetup,
   renderToast,
   shell,
@@ -75,6 +76,9 @@ export default {
       if (path === "/habits" && request.method === "POST") {
         return await handleAdd(request, ctx);
       }
+      if (path === "/schema" && request.method === "POST") {
+        return await handlePrepare(request, ctx);
+      }
       if (path === "/export" && request.method === "GET") {
         return await handleExport(url, ctx);
       }
@@ -115,8 +119,49 @@ async function handleList(request: Request, ctx: Ctx): Promise<Response> {
     return new Response(renderError(problem), { status: 400, headers: HTML });
   }
 
-  const state = await dolt.pull(ctx.db, ctx.branch);
+  // pull이 먼저다. 성한 DB에 왕복을 하나 더 얹지 않기 위해서다.
+  // 스키마를 들여다보는 것은 실패했을 때뿐이다.
+  let state: State;
+  try {
+    state = await dolt.pull(ctx.db, ctx.branch);
+  } catch (err) {
+    const shape = await dolt.inspect(ctx.db, ctx.branch);
+    if (dolt.migrations(shape).length > 0) {
+      return new Response(renderPrepare(shape, ctx.token !== ""), { headers: HTML });
+    }
+    throw err;
+  }
   return new Response(renderHabits(state, todayOf(request)), { headers: HTML });
+}
+
+/**
+ * handlePrepare는 DB를 지금 스키마에 맞춘다.
+ *
+ * 화면이 알려 준 상태는 믿지 않는다. 여기서 다시 들여다보고 부족한 것만 낸다 —
+ * ALTER ADD COLUMN은 이미 있으면 에러라서, 두 번 눌러도 탈이 없으려면 이래야 한다.
+ *
+ * 이 길은 앱이 쓰기에 쓰는 엔드포인트를 그대로 탄다. DoltHub 웹의 조회 콘솔은
+ * DDL을 거부하지만 그것은 읽기 쪽이다. 여기서도 거부당하면 그 문구가 그대로
+ * 토스트로 뜨고, 사용자는 스키마 SQL을 손으로 넣는 예전 길로 돌아가면 된다.
+ */
+async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
+  const guard = requireWrite(ctx);
+  if (guard) return guard;
+
+  const stmts = dolt.migrations(await dolt.inspect(ctx.db, ctx.branch));
+  if (stmts.length === 0) {
+    return new Response(renderHabits(await dolt.pull(ctx.db, ctx.branch), todayOf(request)), {
+      headers: HTML,
+    });
+  }
+
+  await dolt.write(ctx.token, ctx.db, ctx.branch, stmts);
+
+  const state = await dolt.pull(ctx.db, ctx.branch);
+  return new Response(
+    renderHabits(state, todayOf(request)) + renderLive("DB를 준비했습니다."),
+    { headers: HTML },
+  );
 }
 
 async function handleAdd(request: Request, ctx: Ctx): Promise<Response> {

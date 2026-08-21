@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { updateHabit, upsertHabit } from "./dolt";
+import { migrations, updateHabit, upsertHabit } from "./dolt";
 import type { Habit } from "./model";
 
 const base: Habit = {
@@ -37,5 +37,32 @@ describe("updateHabit", () => {
   it("작은따옴표가 든 설명이 문장을 깨뜨리지 않는다", () => {
     const sql = updateHabit("a-1", "달리기", "don't break the chain");
     expect(sql).toContain("'don\\'t break the chain'");
+  });
+});
+
+describe("migrations", () => {
+  it("빈 DB에는 표를 둘 다 만든다. 새 표에는 description이 처음부터 있다", () => {
+    const out = migrations({ habits: false, checks: false, description: false });
+    expect(out).toHaveLength(2);
+    expect(out[0]).toContain("CREATE TABLE habits");
+    expect(out[0]).toContain("description VARCHAR(2000)");
+    expect(out[1]).toContain("CREATE TABLE checks");
+  });
+
+  it("옛 스키마에는 빠진 칸만 더한다", () => {
+    const out = migrations({ habits: true, checks: true, description: false });
+    expect(out).toEqual([
+      "ALTER TABLE habits ADD COLUMN description VARCHAR(2000) NOT NULL DEFAULT '';",
+    ]);
+  });
+
+  it("맞춰진 DB에는 아무것도 하지 않는다", () => {
+    expect(migrations({ habits: true, checks: true, description: true })).toEqual([]);
+  });
+
+  it("habits를 새로 만들 때 ALTER를 겹쳐 내지 않는다", () => {
+    const out = migrations({ habits: false, checks: true, description: false });
+    expect(out).toHaveLength(1);
+    expect(out[0]).toContain("CREATE TABLE habits");
   });
 });

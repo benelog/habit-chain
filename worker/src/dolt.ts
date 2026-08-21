@@ -32,6 +32,13 @@ CREATE TABLE IF NOT EXISTS checks (
   PRIMARY KEY (habit_id, check_date)
 );`;
 
+/** DB가 지금 어떤 모양인지. 읽기만으로 알아낸다 — 토큰이 필요 없다. */
+export interface Shape {
+  habits: boolean;
+  checks: boolean;
+  description: boolean;
+}
+
 interface QueryResponse {
   query_execution_status?: string;
   query_execution_message?: string;
@@ -105,6 +112,71 @@ export async function pull(db: string, branch: string): Promise<State> {
 }
 
 // ── 쓰기 ───────────────────────────────────────────────
+
+/**
+ * inspect는 DB의 모양을 읽어 온다.
+ *
+ * SHOW TABLES의 행 키는 `Tables_in_<db>`라 DB마다 다르다. 그래서 키를 찾지 않고
+ * 값 하나를 꺼낸다. SHOW COLUMNS는 테이블이 없으면 던지므로 있을 때만 부른다.
+ */
+export async function inspect(db: string, branch: string): Promise<Shape> {
+  const res = await query(db, branch, "SHOW TABLES");
+  const tables = new Set(
+    (res.rows ?? []).map((r) => str(Object.values(r)[0]).toLowerCase()),
+  );
+
+  const shape: Shape = {
+    habits: tables.has("habits"),
+    checks: tables.has("checks"),
+    description: false,
+  };
+  if (!shape.habits) return shape;
+
+  const cols = await query(db, branch, "SHOW COLUMNS FROM habits");
+  shape.description = (cols.rows ?? []).some(
+    (r) => str(r["Field"]).toLowerCase() === "description",
+  );
+  return shape;
+}
+
+/**
+ * migrations는 이 모양을 지금 스키마로 끌어올릴 문장을 만든다.
+ *
+ * 부족한 것만 낸다. ALTER ADD COLUMN은 이미 있으면 에러라서, 멱등성은
+ * "실행 직전에 다시 들여다본다"로 지킨다 — 화면이 알려 준 상태를 믿지 않는다.
+ * 새로 만드는 테이블에는 description이 처음부터 들어 있다.
+ */
+export function migrations(shape: Shape): string[] {
+  const out: string[] = [];
+  if (!shape.habits) {
+    out.push(CREATE_HABITS);
+  } else if (!shape.description) {
+    out.push(ADD_DESCRIPTION);
+  }
+  if (!shape.checks) {
+    out.push(CREATE_CHECKS);
+  }
+  return out;
+}
+
+const CREATE_HABITS = `CREATE TABLE habits (
+  id VARCHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(200) NOT NULL,
+  description VARCHAR(2000) NOT NULL DEFAULT '',
+  color VARCHAR(16) NOT NULL DEFAULT '#f97316',
+  created_at VARCHAR(32) NOT NULL,
+  archived BOOLEAN NOT NULL DEFAULT false
+);`;
+
+const CREATE_CHECKS = `CREATE TABLE checks (
+  habit_id VARCHAR(36) NOT NULL,
+  check_date DATE NOT NULL,
+  note VARCHAR(500) NOT NULL DEFAULT '',
+  PRIMARY KEY (habit_id, check_date)
+);`;
+
+// AFTER 절은 Dolt 파서가 받지 않는다. 컬럼 위치는 지정하지 않는다.
+const ADD_DESCRIPTION = `ALTER TABLE habits ADD COLUMN description VARCHAR(2000) NOT NULL DEFAULT '';`;
 
 async function doltFetch(url: string, token: string, method: "GET" | "POST"): Promise<any> {
   const res = await fetch(url, { method, headers: { authorization: `token ${token}` } });

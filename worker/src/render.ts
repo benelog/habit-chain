@@ -110,7 +110,7 @@ export function renderSetup(): string {
     <h2>DoltHub DB를 연결하세요</h2>
     <p>이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.</p>
     <ol class="setup-steps">
-      <li>DoltHub에 DB를 만들고, <b>스키마 SQL</b>을 한 번 실행해 커밋합니다.</li>
+      <li>DoltHub에 <b>빈 DB</b>를 하나 만듭니다. 표는 앱이 만듭니다.</li>
       <li>DoltHub의 <code>Settings → Tokens</code>에서 토큰을 발급합니다.</li>
       <li>설정에 <code>owner/name</code>과 토큰을 넣고 <b>저장</b>합니다.</li>
     </ol>
@@ -119,6 +119,41 @@ export function renderSetup(): string {
       <button class="primary" type="button" onclick="document.getElementById('settings').showModal()">설정 열기</button>
       <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
     </div>
+  </div>`;
+}
+
+/**
+ * DB는 있는데 모양이 안 맞을 때.
+ *
+ * 새 DB(테이블이 아예 없음)와 옛 DB(컬럼이 모자람)를 한 화면으로 받는다.
+ * 둘 다 사용자가 할 일은 같다 — 버튼 하나.
+ *
+ * 예전에는 여기서 스키마 SQL을 복사해 DoltHub 콘솔에 붙여 넣으라고 했다.
+ * 앱이 쓰기에 쓰는 길로 그 문장을 대신 보낼 수 있으므로, 손으로 하는 길은
+ * 거부당했을 때를 위해 링크로만 남긴다.
+ */
+export function renderPrepare(shape: { habits: boolean; description: boolean }, hasToken: boolean): string {
+  const fresh = !shape.habits;
+  const what = fresh
+    ? "이 DB에는 아직 표가 없습니다."
+    : "이 DB는 지난 버전의 표를 쓰고 있습니다. 설명(description) 칸이 없습니다.";
+  const does = fresh ? "표를 만듭니다" : "빠진 칸을 더합니다";
+
+  return `<div class="empty setup">
+    <h2>DB를 준비해야 합니다</h2>
+    <p>${what}</p>
+    <p class="setup-note">누르면 이 앱이 당신의 토큰으로 ${does}. 있는 기록은 건드리지 않습니다.</p>
+    <div class="chips">
+      ${
+        hasToken
+          ? `<button class="primary" hx-post="/schema" hx-target="#habits" hx-swap="innerHTML"
+        hx-disabled-elt="this">DB 준비하기</button>`
+          : `<button class="primary" type="button"
+        onclick="document.getElementById('settings').showModal()">토큰 넣기</button>`
+      }
+      <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
+    </div>
+    ${hasToken ? "" : `<p class="setup-note">표를 만들려면 쓰기가 필요합니다. 설정에 토큰을 넣어 주세요.</p>`}
   </div>`;
 }
 
@@ -465,7 +500,8 @@ export function shell(): string {
       <fieldset>
         <legend>데이터</legend>
         <p class="hint">
-          새 DB라면 스키마부터 넣어야 합니다. 아래 SQL을 DoltHub의 SQL 콘솔에 붙여넣고 커밋하세요.
+          표는 앱이 만듭니다. 빈 DB와 토큰만 넣으면 목록 자리에 <b>DB 준비하기</b> 버튼이 뜹니다.
+          그 길이 막혔을 때를 위해 스키마 SQL도 그대로 둡니다 — DoltHub 콘솔에 붙여넣고 커밋하면 됩니다.
         </p>
         <div class="row">
           <a class="ghost" id="export-link" href="/export" download>JSON 내보내기</a>
