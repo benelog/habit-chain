@@ -12,6 +12,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Cloudflare 시크릿이 아직 없으면 조용히 건너뛴다.
+    if: ${{ vars.DEPLOY_WORKER != 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +31,23 @@ jobs:
 
       # DOLTHUB_TOKEN·WRITE_KEY는 `wrangler secret put` 으로 따로 넣는다.
       # 배포는 그 값을 건드리지 않는다.
+      - name: Cloudflare 시크릿 확인
+        id: check
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::notice::CLOUDFLARE_API_TOKEN이 없어 배포를 건너뜁니다."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: cloudflare/wrangler-action@v3
+        if: steps.check.outputs.ready == 'true'
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: worker
+          wranglerVersion: '4.125.0'
+          packageManager: npm

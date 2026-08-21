@@ -1,0 +1,12 @@
+{
+  "name": "habit-chain-worker",
+  "private": true,
+  "description": "habit-chain 정적 자산 서빙 + DoltHub 쓰기 프록시",
+  "scripts": {
+    "dev": "wrangler dev --port 8788 --local",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.125.0"
+  }
+}
