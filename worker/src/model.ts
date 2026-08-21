@@ -10,6 +10,8 @@ export type DateStr = string; // YYYY-MM-DD
 export interface Habit {
   id: string;
   name: string;
+  /** 여러 줄 평문. 습관을 왜/어떻게 하는지 적어 두는 자리다. */
+  description: string;
   color: string;
   created_at: string; // RFC3339
   archived: boolean;

@@ -85,6 +85,9 @@ export default {
       }
 
       const habit = /^\/habits\/([^/]+)$/.exec(path);
+      if (habit && request.method === "PUT") {
+        return await handleEdit(request, ctx, decodeURIComponent(habit[1]!));
+      }
       if (habit && request.method === "DELETE") {
         return await handleDelete(request, ctx, decodeURIComponent(habit[1]!));
       }
@@ -129,6 +132,7 @@ async function handleAdd(request: Request, ctx: Ctx): Promise<Response> {
   const habit: Habit = {
     id: crypto.randomUUID(),
     name: name.slice(0, 60),
+    description: normalizeDesc(String(form.get("description") ?? "")),
     color: normalizeColor(String(form.get("color") ?? "")),
     created_at: new Date().toISOString(),
     archived: false,
@@ -192,6 +196,45 @@ async function handleToggle(
     renderDay(state, today, true) +
     renderLive(announce(state, habitID, date, on, today));
 
+  return new Response(body, { headers: HTML });
+}
+
+/**
+ * handleEdit은 이름과 설명을 고친다.
+ *
+ * handleToggle과 같은 모양으로 답한다 — 카드 하나, 오늘 요약(OOB), 알림 한 줄.
+ * 요약까지 다시 그리는 이유는 이름이 거기 눈금의 title에도 들어가기 때문이다.
+ */
+async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<Response> {
+  const guard = requireWrite(ctx);
+  if (guard) return guard;
+
+  const form = await request.formData();
+  const name = String(form.get("name") ?? "").trim();
+  if (name === "") {
+    return toast("습관 이름을 넣으세요.", 400);
+  }
+  const description = normalizeDesc(String(form.get("description") ?? ""));
+
+  const today = todayOf(request);
+  let state = await dolt.pull(ctx.db, ctx.branch);
+
+  // 다른 곳에서 지워진 습관이다. 카드 자리에 답해 봐야 유령 카드가 남는다.
+  if (!state.habits.some((h) => h.id === habitID)) {
+    return new Response(renderHabits(state, today), {
+      headers: { ...HTML, "HX-Retarget": "#habits", "HX-Reswap": "innerHTML" },
+    });
+  }
+
+  await dolt.write(ctx.token, ctx.db, ctx.branch, [
+    dolt.updateHabit(habitID, name.slice(0, 60), description),
+  ]);
+
+  state = await dolt.pull(ctx.db, ctx.branch);
+  const body =
+    renderOneCard(state, habitID, today) +
+    renderDay(state, today, true) +
+    renderLive(`${name} 수정됨.`);
   return new Response(body, { headers: HTML });
 }
 
@@ -313,6 +356,17 @@ function json(body: unknown, status = 200): Response {
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * 설명은 여러 줄 평문이다.
+ *
+ * 줄바꿈은 그대로 두되 CRLF를 LF로 맞춘다 — 브라우저가 textarea 값을 CRLF로
+ * 보내는 경우가 있고, 그대로 저장하면 같은 글이 저장할 때마다 달라 보인다.
+ * 길이는 컬럼 크기(VARCHAR(2000))에 맞춰 자른다.
+ */
+function normalizeDesc(s: string): string {
+  return s.replace(/\r\n/g, "\n").trim().slice(0, 2000);
 }
 
 /** 색은 화면에 style로 들어간다. #rrggbb 말고는 받지 않는다. */

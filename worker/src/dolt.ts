@@ -19,6 +19,7 @@ const POLL_TIMEOUT_MS = 25_000;
 export const SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS habits (
   id VARCHAR(36) NOT NULL PRIMARY KEY,
   name VARCHAR(200) NOT NULL,
+  description VARCHAR(2000) NOT NULL DEFAULT '',
   color VARCHAR(16) NOT NULL DEFAULT '#f97316',
   created_at VARCHAR(32) NOT NULL,
   archived BOOLEAN NOT NULL DEFAULT false
@@ -75,7 +76,7 @@ async function query(db: string, branch: string, q: string): Promise<QueryRespon
  */
 export async function pull(db: string, branch: string): Promise<State> {
   const [habitRes, checkRes] = await Promise.all([
-    query(db, branch, "SELECT id, name, color, created_at, archived FROM habits ORDER BY created_at"),
+    query(db, branch, "SELECT id, name, description, color, created_at, archived FROM habits ORDER BY created_at"),
     query(db, branch, "SELECT habit_id, check_date, note FROM checks ORDER BY check_date"),
   ]);
 
@@ -83,6 +84,7 @@ export async function pull(db: string, branch: string): Promise<State> {
     .map((r) => ({
       id: str(r["id"]),
       name: str(r["name"]),
+      description: str(r["description"]),
       color: str(r["color"]) || "#f97316",
       created_at: str(r["created_at"]),
       // DoltHub는 BOOLEAN을 0/1이나 "0"/"1"로 돌려준다.
@@ -176,10 +178,23 @@ export async function write(
 
 export function upsertHabit(h: Habit): string {
   return (
-    `INSERT INTO habits (id, name, color, created_at, archived) VALUES (` +
-    `${sqlEscape(h.id)}, ${sqlEscape(h.name)}, ${sqlEscape(h.color)}, ` +
+    `INSERT INTO habits (id, name, description, color, created_at, archived) VALUES (` +
+    `${sqlEscape(h.id)}, ${sqlEscape(h.name)}, ${sqlEscape(h.description)}, ${sqlEscape(h.color)}, ` +
     `${sqlEscape(h.created_at)}, false) ` +
-    `ON DUPLICATE KEY UPDATE name = VALUES(name), color = VALUES(color);`
+    `ON DUPLICATE KEY UPDATE name = VALUES(name), description = VALUES(description), color = VALUES(color);`
+  );
+}
+
+/**
+ * updateHabit은 이름과 설명만 고친다.
+ *
+ * upsertHabit으로도 되지만 그러려면 created_at까지 들고 와야 하고, 그 값이
+ * 어긋나면 만든 날짜가 조용히 바뀐다. 고칠 것만 건드리는 문장을 따로 둔다.
+ */
+export function updateHabit(id: string, name: string, description: string): string {
+  return (
+    `UPDATE habits SET name = ${sqlEscape(name)}, description = ${sqlEscape(description)} ` +
+    `WHERE id = ${sqlEscape(id)};`
   );
 }
 

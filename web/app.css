@@ -193,6 +193,27 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 .del-btn { opacity: .45; }
 .card:hover .del-btn, .del-btn:focus-visible { opacity: 1; }
 
+/* 설명. 사용자가 적은 줄바꿈을 그대로 살린다 — <br>로 바꾸지 않는 이유다. */
+.card-desc {
+  margin: 11px 0 0; font-size: 13px; line-height: 1.65;
+  color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+/* ── 카드 안에서 고치기 ───────────────────────────
+   폼은 카드마다 접힌 채로 함께 나온다. 여는 것은 클래스 하나라 왕복이 없다. */
+.card-edit { display: none; }
+.card.editing .card-edit { display: block; margin-bottom: 4px; }
+.card.editing .card-head, .card.editing .card-desc { display: none; }
+.card-edit label { margin-bottom: 0; }
+.card-edit input[type=text], .card-edit textarea {
+  display: block; width: 100%; margin: 5px 0 10px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 9px 11px; color: var(--text); font: inherit; outline: none;
+}
+.card-edit textarea { resize: vertical; min-height: 84px; line-height: 1.6; font-size: 13.5px; }
+.card-edit input:focus, .card-edit textarea:focus { border-color: var(--muted); }
+.edit-row { display: flex; justify-content: flex-end; gap: 8px; }
+
 .card-body {
   display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap;
   margin-top: 16px;
@@ -380,6 +401,13 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   font: inherit; font-size: 15px; padding: 3px 1px; outline: none;
 }
 .add-form input[type=text]::placeholder { color: var(--muted); }
+/* 설명은 선택이라 눈에 덜 띄게 둔다. 이름 칸과 같은 자리에서 아래로만 자란다. */
+.add-form textarea {
+  width: 100%; background: transparent; border: 0; color: var(--text);
+  font: inherit; font-size: 13.5px; padding: 3px 1px; outline: none;
+  resize: vertical; min-height: 42px; line-height: 1.6;
+}
+.add-form textarea::placeholder { color: var(--muted); }
 .add-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 /* 네이티브 색 선택기 대신 고른 색만 내놓는다. 습관 색은 8개면 충분하고,

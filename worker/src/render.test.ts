@@ -59,7 +59,16 @@ describe("renderSetup", () => {
 describe("renderHabits", () => {
   const today = "2026-08-22";
   const state: State = {
-    habits: [{ id: "a", name: "달리기", color: "#e2542f", created_at: "", archived: false }],
+    habits: [
+      {
+        id: "a",
+        name: "달리기",
+        description: "아침에 30분.\n비 오면 실내에서.",
+        color: "#e2542f",
+        created_at: "",
+        archived: false,
+      },
+    ],
     checks: [
       { habit_id: "a", date: "2026-08-22", note: "" },
       { habit_id: "a", date: "2026-08-21", note: "" },
@@ -90,5 +99,33 @@ describe("renderHabits", () => {
 
   it("칸의 title에 날짜가 들어간다", () => {
     expect(renderHabits(state, today)).toContain('title="8월 22일 토요일 완료"');
+  });
+
+  it("설명은 줄바꿈을 그대로 담는다", () => {
+    const html = renderHabits(state, today);
+    expect(html).toContain('<p class="card-desc">아침에 30분.\n비 오면 실내에서.</p>');
+  });
+
+  it("설명이 비면 그 자리를 만들지 않는다", () => {
+    const bare: State = { ...state, habits: [{ ...state.habits[0]!, description: "" }] };
+    expect(renderHabits(bare, today)).not.toContain("card-desc");
+  });
+
+  it("편집 폼이 카드마다 함께 나온다", () => {
+    const html = renderHabits(state, today);
+    expect(html).toContain('hx-put="/habits/a"');
+    expect(html).toContain('name="name" type="text" value="달리기"');
+    // textarea의 내용이 곧 폼의 기본값이다. 취소(form.reset)가 여기로 되돌아간다.
+    expect(html).toContain("아침에 30분.\n비 오면 실내에서.</textarea>");
+  });
+
+  it("설명에 든 태그는 화면으로 새지 않는다", () => {
+    const nasty: State = {
+      ...state,
+      habits: [{ ...state.habits[0]!, description: "</textarea><script>alert(1)</script>" }],
+    };
+    const html = renderHabits(nasty, today);
+    expect(html).not.toContain("<script>alert(1)</script>");
+    expect(html).toContain("&lt;/textarea&gt;");
   });
 });

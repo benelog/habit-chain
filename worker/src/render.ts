@@ -194,14 +194,53 @@ function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr): s
     <div class="card-actions">
       <button id="t-${id}" class="today-btn${doneToday ? " done" : ""}"
         aria-pressed="${doneToday}" ${toggleAttrs(h.id, today)}>${doneToday ? "오늘 완료" : "오늘 체크"}</button>
+      <button type="button" class="icon-btn edit-btn" aria-label="'${esc(h.name)}' 수정" title="수정"
+        onclick="habitChain.edit(this)">${PENCIL}</button>
       <button class="icon-btn del-btn" aria-label="'${esc(h.name)}' 삭제" title="삭제"
         hx-delete="/habits/${encodeURIComponent(h.id)}"
         hx-target="#habits" hx-swap="innerHTML" hx-indicator="closest .card"
         hx-confirm="'${esc(h.name)}'의 기록 ${stats.total}회가 함께 지워집니다. 되돌릴 수 없습니다.">${TRASH}</button>
     </div>
   </div>
-  <div class="card-body">${renderGrid(h, idx, today)}${renderStats(stats)}</div>
+${renderDesc(h)}${renderEdit(h)}  <div class="card-body">${renderGrid(h, idx, today)}${renderStats(stats)}</div>
 </article>`;
+}
+
+/**
+ * 설명은 여러 줄 평문이다. 줄바꿈은 CSS(white-space: pre-wrap)가 살린다 —
+ * <br>로 바꾸면 사용자가 적은 글자가 아닌 것이 화면에 섞인다.
+ * 비어 있으면 자리 자체를 만들지 않는다. 빈 칸이 카드마다 벌어진다.
+ */
+function renderDesc(h: Habit): string {
+  return h.description === "" ? "" : `  <p class="card-desc">${esc(h.description)}</p>\n`;
+}
+
+/**
+ * renderEdit은 카드마다 접혀 있는 편집 폼을 함께 낸다.
+ *
+ * 폼을 서버에서 따로 받아 오지 않는 이유는 왕복이다 — 이 앱의 읽기 한 번이
+ * 1초 가까이 걸려서, 수정 버튼과 취소 버튼이 그때마다 멈칫한다.
+ * 카드에 같이 실어 두면 여닫는 것은 클래스 하나이고, 서버로 가는 것은 저장뿐이다.
+ *
+ * 취소가 form.reset()으로 되돌아가는 것은 여기 적힌 값이 곧 폼의 기본값이기
+ * 때문이다. 저장에 성공하면 서버가 새 카드로 통째로 갈아 끼우므로 편집 상태도 함께 풀린다.
+ */
+function renderEdit(h: Habit): string {
+  const id = esc(h.id);
+  return `  <form class="card-edit" hx-put="/habits/${encodeURIComponent(h.id)}"
+    hx-target="closest .card" hx-swap="outerHTML" hx-indicator="closest .card"
+    onkeydown="habitChain.escCancels(event)">
+    <label for="e-name-${id}">이름</label>
+    <input id="e-name-${id}" name="name" type="text" value="${esc(h.name)}" maxlength="60" required autocomplete="off">
+    <label for="e-desc-${id}">설명</label>
+    <textarea id="e-desc-${id}" name="description" rows="4" maxlength="2000"
+      placeholder="여러 줄로 적어도 됩니다.">${esc(h.description)}</textarea>
+    <div class="edit-row">
+      <button type="button" class="ghost" onclick="habitChain.cancelEdit(this)">취소</button>
+      <button type="submit" class="primary">저장</button>
+    </div>
+  </form>
+`;
 }
 
 function renderStats(s: Stats): string {
@@ -306,6 +345,11 @@ const TRASH =
   `stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">` +
   `<path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5.6 5.5l.7 10a1 1 0 0 0 1 .9h5.4a1 1 0 0 0 1-.9l.7-10"/></svg>`;
 
+const PENCIL =
+  `<svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" ` +
+  `stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">` +
+  `<path d="M13.6 3.4a1.6 1.6 0 0 1 2.3 2.3L7.4 14.1l-3 .7.7-3z"/></svg>`;
+
 const GEAR =
   `<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" ` +
   `stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="2.7"/>` +
@@ -371,6 +415,8 @@ export function shell(): string {
       hx-post="/habits" hx-target="#habits" hx-swap="innerHTML" hx-indicator="this"
       hx-on::after-request="habitChain.afterAdd(event, this)">
       <input id="new-name" name="name" type="text" placeholder="새 습관 (예: 아침 30분 달리기)" maxlength="60" required>
+      <textarea id="new-desc" name="description" rows="2" maxlength="2000"
+        placeholder="설명 (선택) — 여러 줄로 적어도 됩니다"></textarea>
       <div class="add-row">
         <div class="swatches" role="radiogroup" aria-label="사슬 색">${swatches}</div>
         <button type="submit" class="primary">추가</button>
@@ -560,6 +606,36 @@ window.habitChain = {
   },
   clearToast() {
     document.getElementById("toast").innerHTML = "";
+  },
+  /**
+   * 수정은 카드 안에서 한다.
+   *
+   * 폼은 이미 카드에 실려 나온다. 여는 것은 클래스 하나뿐이고 서버로 가는 것은
+   * 저장뿐이라, 수정 버튼도 취소 버튼도 기다림이 없다.
+   */
+  edit(btn) {
+    const card = btn.closest(".card");
+    if (!card) return;
+    card.classList.add("editing");
+    const el = card.querySelector(".card-edit input[name=name]");
+    if (el) {
+      el.focus();
+      el.select();
+    }
+  },
+  // 취소는 손댄 것을 되돌린다. 폼의 기본값이 곧 서버가 준 값이라 reset이면 된다.
+  cancelEdit(el) {
+    const card = el.closest(".card");
+    if (!card) return;
+    const form = card.querySelector(".card-edit");
+    if (form) form.reset();
+    card.classList.remove("editing");
+  },
+  // 편집 중 Esc는 취소다. 다이얼로그가 아니라서 브라우저가 대신 해 주지 않는다.
+  escCancels(event) {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    this.cancelEdit(event.target);
   },
   // 빈 화면의 예시를 누르면 입력란이 채워진다. 첫 습관을 만드는 데 드는 손을 줄인다.
   suggest(name) {
