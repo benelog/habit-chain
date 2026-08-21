@@ -14,9 +14,9 @@
  */
 
 import * as dolt from "./dolt";
-import { isDateStr } from "./model";
-import type { Habit } from "./model";
-import { renderError, renderHabits, shell } from "./render";
+import { compute, datesOf, isDateStr } from "./model";
+import type { Habit, State } from "./model";
+import { renderDay, renderError, renderHabits, renderLive, renderOneCard, renderToast, shell } from "./render";
 
 interface Env {
   ASSETS: Fetcher;
@@ -51,8 +51,10 @@ export default {
       });
     }
 
+    const isList = path === "/habits" && request.method === "GET";
+
     try {
-      if (path === "/habits" && request.method === "GET") {
+      if (isList) {
         return await handleList(request, env);
       }
       if (path === "/habits" && request.method === "POST") {
@@ -72,15 +74,16 @@ export default {
         return await handleDelete(request, env, decodeURIComponent(habit[1]!));
       }
     } catch (err) {
-      // 조각을 요청한 것이니 오류도 조각으로 돌려준다. 그래야 화면에 보인다.
-      return new Response(renderError(message(err)), { status: 502, headers: HTML });
+      // 목록을 못 불러왔으면 보여줄 게 없으니 화면 전체가 오류다.
+      // 쓰기가 실패한 경우는 다르다 — 화면에 있던 기록은 여전히 유효하다.
+      return isList
+        ? new Response(renderError(message(err)), { status: 502, headers: HTML })
+        : toast(message(err), 502);
     }
 
     return env.ASSETS.fetch(request);
   },
 };
-
-// ── 핸들러 ─────────────────────────────────────────────
 
 async function handleList(request: Request, env: Env): Promise<Response> {
   const state = await dolt.pull(dbOf(env), branchOf(env));
@@ -94,7 +97,7 @@ async function handleAdd(request: Request, env: Env): Promise<Response> {
   const form = await request.formData();
   const name = String(form.get("name") ?? "").trim();
   if (name === "") {
-    return fragment(renderError("습관 이름을 넣으세요."), 400);
+    return toast("습관 이름을 넣으세요.", 400);
   }
 
   const habit: Habit = {
@@ -106,9 +109,21 @@ async function handleAdd(request: Request, env: Env): Promise<Response> {
   };
 
   await dolt.write(env.DOLTHUB_TOKEN!, dbOf(env), branchOf(env), [dolt.upsertHabit(habit)]);
-  return await handleList(request, env);
+
+  const today = todayOf(request);
+  const state = await dolt.pull(dbOf(env), branchOf(env));
+  return new Response(renderHabits(state, today) + renderLive(`${habit.name} 추가됨.`), {
+    headers: HTML,
+  });
 }
 
+/**
+ * handleToggle은 카드 하나만 돌려준다.
+ *
+ * 예전에는 목록 전체를 다시 그렸다. 칸 하나 누를 때마다 화면이 통째로 갈리고
+ * 포커스도 날아갔다. 이제 바뀐 카드만 바꾸고, 상단의 오늘 요약은
+ * hx-swap-oob으로 따라 바뀐다.
+ */
 async function handleToggle(
   request: Request,
   env: Env,
@@ -120,26 +135,38 @@ async function handleToggle(
 
   const date = url.searchParams.get("date");
   if (!isDateStr(date)) {
-    return fragment(renderError(`날짜 형식이 올바르지 않습니다: ${date}`), 400);
+    return toast(`날짜 형식이 올바르지 않습니다: ${date}`, 400);
   }
   const today = todayOf(request);
   if (date > today) {
-    return fragment(renderError("아직 오지 않은 날은 체크할 수 없습니다."), 400);
+    return toast("아직 오지 않은 날은 체크할 수 없습니다.", 400);
   }
 
-  // 지금 켜져 있는지는 원본을 보고 정한다. 화면이 오래됐을 수 있기 때문이다.
   const state = await dolt.pull(dbOf(env), branchOf(env));
+
+  // 다른 기기에서 지운 습관을 여기서 눌렀을 때. 카드 자리에 목록 전체를 끼워
+  // 넣을 수는 없으니, 목적지를 목록으로 돌려 통째로 다시 그린다.
+  if (!state.habits.some((h) => h.id === habitID)) {
+    return new Response(renderHabits(state, today), {
+      headers: { ...HTML, "HX-Retarget": "#habits", "HX-Reswap": "innerHTML" },
+    });
+  }
+
   const on = state.checks.some((c) => c.habit_id === habitID && c.date === date);
   const stmt = on ? dolt.deleteCheck(habitID, date) : dolt.insertCheck(habitID, date);
 
   await dolt.write(env.DOLTHUB_TOKEN!, dbOf(env), branchOf(env), [stmt]);
 
-  // 방금 쓴 것을 다시 읽지 않고 손에 든 상태를 고쳐서 그린다. 왕복 하나를 아낀다.
   state.checks = on
     ? state.checks.filter((c) => !(c.habit_id === habitID && c.date === date))
     : [...state.checks, { habit_id: habitID, date, note: "" }];
 
-  return new Response(renderHabits(state, today), { headers: HTML });
+  const body =
+    renderOneCard(state, habitID, today) +
+    renderDay(state, today, true) +
+    renderLive(announce(state, habitID, date, on, today));
+
+  return new Response(body, { headers: HTML });
 }
 
 async function handleDelete(request: Request, env: Env, habitID: string): Promise<Response> {
@@ -147,7 +174,11 @@ async function handleDelete(request: Request, env: Env, habitID: string): Promis
   if (guard) return guard;
 
   await dolt.write(env.DOLTHUB_TOKEN!, dbOf(env), branchOf(env), dolt.deleteHabit(habitID));
-  return await handleList(request, env);
+
+  const state = await dolt.pull(dbOf(env), branchOf(env));
+  return new Response(renderHabits(state, todayOf(request)) + renderLive("습관을 삭제했습니다."), {
+    headers: HTML,
+  });
 }
 
 async function handleExport(env: Env): Promise<Response> {
@@ -161,7 +192,12 @@ async function handleExport(env: Env): Promise<Response> {
   });
 }
 
-// ── 거들기 ─────────────────────────────────────────────
+/** 스크린 리더에 읽어 줄 한 줄. 화면에서는 색과 모양이 하는 말이다. */
+function announce(state: State, habitID: string, date: string, wasOn: boolean, today: string): string {
+  const name = state.habits.find((h) => h.id === habitID)?.name ?? "습관";
+  const days = compute(datesOf(state, habitID), today).current;
+  return `${name} ${date} ${wasOn ? "체크 해제" : "체크"}. 현재 ${days}일째.`;
+}
 
 function dbOf(env: Env): string {
   return (env.ALLOWED_DB || "").split(",")[0]?.trim() || "";
@@ -186,19 +222,28 @@ function todayOf(request: Request): string {
 /** 쓰기 요청이 통과해도 되는지 본다. 통과하면 null을 돌려준다. */
 function requireWrite(request: Request, env: Env): Response | null {
   if (!dbOf(env)) {
-    return fragment(renderError("이 서버에 ALLOWED_DB가 설정되지 않았습니다."), 501);
+    return toast("이 서버에 ALLOWED_DB가 설정되지 않았습니다.", 501);
   }
   if (!env.DOLTHUB_TOKEN) {
-    return fragment(renderError("이 서버에 DOLTHUB_TOKEN 시크릿이 설정되지 않았습니다."), 501);
+    return toast("이 서버에 DOLTHUB_TOKEN 시크릿이 설정되지 않았습니다.", 501);
   }
   if (env.WRITE_KEY && request.headers.get("X-Write-Key") !== env.WRITE_KEY) {
-    return fragment(renderError("쓰기 키가 맞지 않습니다. 설정에서 넣어 주세요."), 401);
+    return toast("쓰기 키가 맞지 않습니다. 설정에서 넣어 주세요.", 401);
   }
   return null;
 }
 
-function fragment(html: string, status: number): Response {
-  return new Response(html, { status, headers: HTML });
+/**
+ * toast는 쓰기 실패를 알린다.
+ *
+ * HX-Retarget으로 목적지를 #toast로 돌린다. 그러지 않으면 오류 문구가
+ * 원래 목표였던 카드나 목록 자리에 들어가 앉아, 화면에 있던 기록을 지워 버린다.
+ */
+function toast(msg: string, status: number): Response {
+  return new Response(renderToast(msg), {
+    status,
+    headers: { ...HTML, "HX-Retarget": "#toast", "HX-Reswap": "innerHTML" },
+  });
 }
 
 function json(body: unknown, status = 200): Response {
@@ -214,5 +259,5 @@ function message(err: unknown): string {
 
 /** 색은 화면에 style로 들어간다. #rrggbb 말고는 받지 않는다. */
 function normalizeColor(c: string): string {
-  return /^#[0-9a-fA-F]{6}$/.test(c) ? c : "#f97316";
+  return /^#[0-9a-fA-F]{6}$/.test(c) ? c : "#e2542f";
 }

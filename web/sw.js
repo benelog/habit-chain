@@ -1,7 +1,7 @@
 // habit-chain service worker
-// wasm 번들이 10MB에 가깝기 때문에 캐시가 사실상 필수다.
+// 정적 껍데기만 캐시해서 오프라인에서도 화면은 뜨게 한다.
 // BUILD_ID는 배포할 때 치환되며, 값이 바뀌면 캐시를 통째로 새로 만든다.
-const BUILD_ID = "dev";
+const BUILD_ID = "2026-08-21";
 const CACHE = `habit-chain-${BUILD_ID}`;
 
 // 정적 자산만 캐시한다.
