@@ -20,8 +20,7 @@ const (
 type Settings struct {
 	DoltDB     string `json:"dolt_db"`     // "benelog/habit-chain" 형식
 	DoltBranch string `json:"dolt_branch"` // 기본 main
-	WriteURL   string `json:"write_url"`   // 쓰기 프록시 주소. 비면 같은 출처의 /api/write
-	WriteKey   string `json:"write_key"`   // 프록시가 요구하는 공유 비밀
+	WriteKey   string `json:"write_key"`   // 쓰기 서버가 요구하는 공유 비밀
 	AutoSync   bool   `json:"auto_sync"`   // 체크할 때마다 곧바로 밀어넣기
 	LastSynced string `json:"last_synced"` // RFC3339
 }

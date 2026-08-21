@@ -16,7 +16,9 @@
     "enabled": true
   },
   "vars": {
-    // 쓰기를 허용할 DoltHub DB. 비워두면 토큰이 닿는 모든 DB에 쓸 수 있다.
-    "ALLOWED_DB": "benelog/habit-chain"
+    // 쓰기를 허용할 DoltHub DB. 첫 항목이 앱의 기본 DB가 된다.
+    // 비워두면 토큰이 닿는 모든 DB에 쓸 수 있다.
+    "ALLOWED_DB": "benelog/habit-chain",
+    "DOLT_BRANCH": "main"
   }
 }

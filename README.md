@@ -6,7 +6,6 @@
 Go로 짜서 WebAssembly로 돌리고, 데이터는 [DoltHub](https://www.dolthub.com)에 버전 관리된 채로 쌓입니다.
 
 - **앱**: https://habit-chain.\<계정\>.workers.dev (Cloudflare Workers)
-- **미러**: https://benelog.github.io/habit-chain/ (GitHub Pages, 읽기 전용)
 - **데이터**: https://www.dolthub.com/repositories/benelog/habit-chain
 
 ## 왜 이런 구조인가
@@ -32,6 +31,9 @@ Go로 짜서 WebAssembly로 돌리고, 데이터는 [DoltHub](https://www.dolthu
   LocalStorage
   (항상 여기 먼저 쓴다)
 ```
+
+화면과 API를 같은 Worker가 서빙합니다. 그래서 앱은 자기가 놓인 곳의 `/api/health`를 읽어
+DB 이름과 브랜치를 스스로 채웁니다 — 처음 여는 사람도 설정 화면을 열 필요가 없습니다.
 
 기록은 **언제나 LocalStorage에 먼저** 들어갑니다. 네트워크가 없어도, 쓰기 서버가 없어도 앱은 그대로 동작합니다.
 DoltHub 반영은 그 위에 얹힌 동기화일 뿐이고, 아직 못 보낸 변경은 SQL 큐에 남아 상단 배지에 개수로 표시됩니다.
@@ -103,9 +105,13 @@ npx wrangler deploy
 
 이후 push마다 `.github/workflows/worker.yml`이 자동 배포합니다.
 저장소 시크릿에 `CLOUDFLARE_API_TOKEN`과 `CLOUDFLARE_ACCOUNT_ID`가 필요합니다.
+시크릿이 없으면 배포 단계는 알림만 남기고 넘어갑니다.
 
-**3. 앱 설정** — DB 이름과 쓰기 키를 넣습니다. 앱이 Worker에서 서빙되면 쓰기 서버 주소는 비워두세요.
-같은 출처의 `/api/write`를 자동으로 씁니다. GitHub Pages 미러에서 쓰려면 Worker 주소를 적어 넣습니다.
+**3. 앱 설정** — `WRITE_KEY`를 설정했다면 앱 설정에 한 번 넣습니다. 그 외에는 손댈 것이 없습니다.
+DB 이름과 브랜치는 Worker가 알려주는 값으로 자동으로 채워집니다.
+
+`WRITE_KEY`는 선택이지만 권합니다. 설정하지 않으면 Worker 주소를 아는 누구나 `ALLOWED_DB`에
+임의 SQL을 실행할 수 있습니다. Dolt가 버전 관리를 하니 되돌릴 수는 있지만 손이 갑니다.
 
 ## 사슬 규칙
 

@@ -46,7 +46,10 @@
     <div class="settings-body">
       <fieldset>
         <legend>DoltHub 저장소</legend>
-        <p class="hint">사용자별 데이터는 각자의 DoltHub DB로 나뉩니다. 여기에 자기 DB 이름을 넣으세요.</p>
+        <p class="hint">
+          사용자별 데이터는 각자의 DoltHub DB로 나뉩니다.
+          이 앱을 서빙하는 서버가 알려준 값이 자동으로 채워지니, 다른 DB를 보고 싶을 때만 고치면 됩니다.
+        </p>
         <label>DB 이름
           <input id="set-db" type="text" placeholder="benelog/habit-chain" spellcheck="false">
         </label>
@@ -60,18 +63,13 @@
       </fieldset>
 
       <fieldset>
-        <legend>쓰기 서버 <span class="tag">선택</span></legend>
-        <p class="hint">
+        <legend>DoltHub에 반영</legend>
+        <p class="hint" id="write-hint">
           브라우저는 DoltHub에 직접 쓸 수 없습니다 — 쓰기 API가 CORS preflight를 막습니다.
-          그 일을 대신하는 Cloudflare Worker 주소를 넣으면 자동으로 반영됩니다.
-          앱이 Worker에서 서빙되고 있다면 비워두세요. 같은 주소의 <code>/api/write</code>를 씁니다.
-          서버가 없어도 앱은 로컬에서 그대로 동작하고, 아래 버튼으로 SQL을 복사해 직접 반영할 수 있습니다.
+          이 앱을 서빙하는 서버가 그 일을 대신합니다.
         </p>
-        <label>쓰기 서버 주소
-          <input id="set-write-url" type="text" placeholder="https://habit-chain.<계정>.workers.dev/api/write" spellcheck="false">
-        </label>
-        <label>쓰기 키
-          <input id="set-write-key" type="password" placeholder="Worker의 WRITE_KEY (이 브라우저에만 저장)" spellcheck="false">
+        <label id="write-key-row" hidden>쓰기 키
+          <input id="set-write-key" type="password" placeholder="서버의 WRITE_KEY (이 브라우저에만 저장)" spellcheck="false">
         </label>
         <label class="check">
           <input id="set-auto" type="checkbox">

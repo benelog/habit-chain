@@ -27,11 +27,16 @@ export default {
     if (url.pathname === "/api/write") {
       return withCORS(request, handleWrite(request, env));
     }
+    // 앱이 부팅할 때 여기를 읽어 스스로 설정을 채운다.
+    // 그래서 사용자가 화면에서 손댈 것이 사실상 없다.
     if (url.pathname === "/api/health") {
+      const dbs = (env.ALLOWED_DB || "").split(",").map((s) => s.trim()).filter(Boolean);
       return withCORS(request, Promise.resolve(json({
         ok: true,
+        db: dbs[0] || null,
+        branch: env.DOLT_BRANCH || "main",
         writeConfigured: Boolean(env.DOLTHUB_TOKEN),
-        allowedDb: env.ALLOWED_DB || null,
+        requiresKey: Boolean(env.WRITE_KEY),
       })));
     }
 

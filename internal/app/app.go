@@ -6,6 +6,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"syscall/js"
 	"time"
@@ -41,6 +42,7 @@ type App struct {
 
 	pendingDelete string // 삭제 확인을 기다리는 습관 id
 	pushing       bool   // push가 도는 중인지. 큐를 두 곳에서 자르지 않기 위해 필요하다
+	serverWrites  bool   // 서버가 DoltHub 쓰기를 할 수 있는 상태인지
 	doc           js.Value
 }
 
@@ -65,6 +67,9 @@ func (a *App) Run() {
 	a.bind()
 	a.fillSettings()
 	a.render()
+
+	// 서버가 알려주는 기본값은 화면을 띄운 다음에 받는다. 없어도 앱은 그냥 돈다.
+	go a.adoptServerConfig()
 
 	select {} // wasm 모듈이 종료되지 않도록 붙잡아 둔다
 }
@@ -101,7 +106,7 @@ func (a *App) bind() {
 	})
 
 	// 설정 입력은 바뀔 때마다 곧바로 저장한다.
-	for _, id := range []string{"set-db", "set-branch", "set-write-url", "set-write-key", "set-auto"} {
+	for _, id := range []string{"set-db", "set-branch", "set-write-key", "set-auto"} {
 		a.on(a.el(id), "change", func(js.Value) { a.saveSettings() })
 	}
 
@@ -242,7 +247,6 @@ func (a *App) confirmDelete(id string) {
 func (a *App) fillSettings() {
 	a.el("set-db").Set("value", a.settings.DoltDB)
 	a.el("set-branch").Set("value", a.settings.DoltBranch)
-	a.el("set-write-url").Set("value", a.settings.WriteURL)
 	a.el("set-write-key").Set("value", a.settings.WriteKey)
 	a.el("set-auto").Set("checked", a.settings.AutoSync)
 	a.el("queue-count").Set("textContent", fmt.Sprintf("%d", len(a.queue)))
@@ -251,7 +255,6 @@ func (a *App) fillSettings() {
 func (a *App) saveSettings() {
 	a.settings.DoltDB = strings.TrimSpace(a.el("set-db").Get("value").String())
 	a.settings.DoltBranch = strings.TrimSpace(a.el("set-branch").Get("value").String())
-	a.settings.WriteURL = strings.TrimSpace(a.el("set-write-url").Get("value").String())
 	a.settings.WriteKey = strings.TrimSpace(a.el("set-write-key").Get("value").String())
 	a.settings.AutoSync = a.el("set-auto").Get("checked").Bool()
 	if a.settings.DoltBranch == "" {
@@ -338,7 +341,7 @@ func (a *App) push(verbose bool) {
 
 	a.busy("보내는 중…")
 	msg := fmt.Sprintf("habit-chain: %d개 변경 반영", len(a.queue))
-	sent, err := relay.Push(a.writeEndpoint(), a.settings.WriteKey,
+	sent, err := relay.Push(a.origin()+"/api/write", a.settings.WriteKey,
 		a.settings.DoltDB, a.settings.DoltBranch, a.queue, msg)
 
 	// 실패해도 반영된 만큼은 큐에서 덜어낸다. 같은 문장을 두 번 보내지 않기 위해서다.
@@ -366,14 +369,62 @@ func (a *App) push(verbose bool) {
 	a.status(fmt.Sprintf("%d개를 DoltHub에 반영했습니다.%s", sent, tail), "ok")
 }
 
-// writeEndpoint는 쓰기 프록시 주소를 정한다.
-// 설정이 비어 있으면 앱이 놓인 곳과 같은 출처의 /api/write를 쓴다 —
-// Worker가 앱까지 서빙하는 경우에는 아무 설정 없이 그대로 동작한다.
-func (a *App) writeEndpoint() string {
-	if u := a.settings.WriteURL; u != "" {
-		return strings.TrimRight(u, "/")
+// origin은 앱이 서빙되고 있는 곳이다. 쓰기 서버는 언제나 여기 붙어 있다.
+func (a *App) origin() string {
+	return js.Global().Get("location").Get("origin").String()
+}
+
+// serverConfig는 앱을 서빙하는 서버가 알려주는 기본값이다.
+type serverConfig struct {
+	OK              bool   `json:"ok"`
+	DB              string `json:"db"`
+	Branch          string `json:"branch"`
+	WriteConfigured bool   `json:"writeConfigured"`
+	RequiresKey     bool   `json:"requiresKey"`
+}
+
+// adoptServerConfig는 서버가 알려준 기본값을 받아들인다.
+//
+// 덕분에 처음 여는 사람도 설정 화면을 열 필요가 없다.
+// 다만 사용자가 직접 넣은 DB 이름은 절대 덮어쓰지 않는다 —
+// 사용자별 데이터 격리가 바로 그 값에 걸려 있기 때문이다.
+func (a *App) adoptServerConfig() {
+	resp, err := http.Get(a.origin() + "/api/health")
+	if err != nil {
+		return // 정적 파일만 서빙되는 곳. 로컬 전용으로 동작한다.
 	}
-	return js.Global().Get("location").Get("origin").String() + "/api/write"
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+	var cfg serverConfig
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil || !cfg.OK {
+		return
+	}
+
+	changed := false
+	if a.settings.DoltDB == "" && cfg.DB != "" {
+		a.settings.DoltDB = cfg.DB
+		changed = true
+	}
+	if a.settings.DoltBranch == "" && cfg.Branch != "" {
+		a.settings.DoltBranch = cfg.Branch
+		changed = true
+	}
+	if changed {
+		store.SaveSettings(a.settings)
+	}
+
+	a.serverWrites = cfg.WriteConfigured
+	a.el("write-key-row").Set("hidden", !cfg.RequiresKey)
+	if !cfg.WriteConfigured {
+		a.el("write-hint").Set("textContent",
+			"이 서버에는 DoltHub 토큰이 설정되어 있지 않습니다. 기록은 로컬에만 남고, 아래에서 SQL을 복사해 직접 반영할 수 있습니다.")
+	}
+
+	a.fillSettings()
+	a.updateBadge()
 }
 
 // snapshot은 로컬 전체를 DoltHub에 덮어쓰는 SQL을 큐에 넣는다.
