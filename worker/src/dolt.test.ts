@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { migrations, updateHabit, upsertHabit } from "./dolt";
+import { isBranchMissing, migrations, updateHabit, upsertHabit } from "./dolt";
 import type { Habit } from "./model";
 
 const base: Habit = {
@@ -42,7 +42,7 @@ describe("updateHabit", () => {
 
 describe("migrations", () => {
   it("빈 DB에는 표를 둘 다 만든다. 새 표에는 description이 처음부터 있다", () => {
-    const out = migrations({ habits: false, checks: false, description: false });
+    const out = migrations({ branch: true, habits: false, checks: false, description: false });
     expect(out).toHaveLength(2);
     expect(out[0]).toContain("CREATE TABLE habits");
     expect(out[0]).toContain("description VARCHAR(2000)");
@@ -50,19 +50,39 @@ describe("migrations", () => {
   });
 
   it("옛 스키마에는 빠진 칸만 더한다", () => {
-    const out = migrations({ habits: true, checks: true, description: false });
+    const out = migrations({ branch: true, habits: true, checks: true, description: false });
     expect(out).toEqual([
       "ALTER TABLE habits ADD COLUMN description VARCHAR(2000) NOT NULL DEFAULT '';",
     ]);
   });
 
   it("맞춰진 DB에는 아무것도 하지 않는다", () => {
-    expect(migrations({ habits: true, checks: true, description: true })).toEqual([]);
+    expect(migrations({ branch: true, habits: true, checks: true, description: true })).toEqual([]);
   });
 
   it("habits를 새로 만들 때 ALTER를 겹쳐 내지 않는다", () => {
-    const out = migrations({ habits: false, checks: true, description: false });
+    const out = migrations({ branch: true, habits: false, checks: true, description: false });
     expect(out).toHaveLength(1);
+    expect(out[0]).toContain("CREATE TABLE habits");
+  });
+});
+
+describe("isBranchMissing", () => {
+  it("브랜치가 없다는 대답만 알아본다", () => {
+    expect(isBranchMissing(new Error("query error: branch not found"))).toBe(true);
+    expect(isBranchMissing(new Error("Branch Not Found"))).toBe(true);
+  });
+
+  it("다른 오류는 그대로 오류다. 준비 안내로 덮으면 진짜 고장을 감춘다", () => {
+    expect(isBranchMissing(new Error("DoltHub 404: repository not found"))).toBe(false);
+    expect(isBranchMissing(new Error("table not found: habits"))).toBe(false);
+  });
+});
+
+describe("migrations · 커밋이 없는 DB", () => {
+  it("브랜치가 없어도 낼 문장은 빈 DB와 같다", () => {
+    const out = migrations({ branch: false, habits: false, checks: false, description: false });
+    expect(out).toHaveLength(2);
     expect(out[0]).toContain("CREATE TABLE habits");
   });
 });

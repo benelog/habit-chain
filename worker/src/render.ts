@@ -132,12 +132,18 @@ export function renderSetup(): string {
  * 앱이 쓰기에 쓰는 길로 그 문장을 대신 보낼 수 있으므로, 손으로 하는 길은
  * 거부당했을 때를 위해 링크로만 남긴다.
  */
-export function renderPrepare(shape: { habits: boolean; description: boolean }, hasToken: boolean): string {
-  const fresh = !shape.habits;
-  const what = fresh
-    ? "이 DB에는 아직 표가 없습니다."
-    : "이 DB는 지난 버전의 표를 쓰고 있습니다. 설명(description) 칸이 없습니다.";
-  const does = fresh ? "표를 만듭니다" : "빠진 칸을 더합니다";
+export function renderPrepare(
+  shape: { branch: boolean; habits: boolean; description: boolean },
+  hasToken: boolean,
+): string {
+  // 세 가지 상태를 한 화면으로 받는다. 사용자가 할 일은 셋 다 버튼 하나다.
+  let what = "이 DB는 지난 버전의 표를 쓰고 있습니다. 설명(description) 칸이 없습니다.";
+  if (!shape.branch) {
+    what = "이 DB에는 아직 커밋이 하나도 없습니다. 그래서 읽을 브랜치조차 없습니다.";
+  } else if (!shape.habits) {
+    what = "이 DB에는 아직 표가 없습니다.";
+  }
+  const does = shape.branch && shape.habits ? "빠진 칸을 더합니다" : "표를 만듭니다";
 
   return `<div class="empty setup">
     <h2>DB를 준비해야 합니다</h2>

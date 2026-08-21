@@ -34,6 +34,8 @@ CREATE TABLE IF NOT EXISTS checks (
 
 /** DB가 지금 어떤 모양인지. 읽기만으로 알아낸다 — 토큰이 필요 없다. */
 export interface Shape {
+  /** 브랜치가 있는가. 커밋이 하나도 없는 DoltHub DB에는 main조차 없다. */
+  branch: boolean;
   habits: boolean;
   checks: boolean;
   description: boolean;
@@ -120,12 +122,22 @@ export async function pull(db: string, branch: string): Promise<State> {
  * 값 하나를 꺼낸다. SHOW COLUMNS는 테이블이 없으면 던지므로 있을 때만 부른다.
  */
 export async function inspect(db: string, branch: string): Promise<Shape> {
-  const res = await query(db, branch, "SHOW TABLES");
+  let res: QueryResponse;
+  try {
+    res = await query(db, branch, "SHOW TABLES");
+  } catch (err) {
+    // 방금 만든 DB다. 커밋이 없으니 브랜치도 없고, 읽을 것이 하나도 없다.
+    // 이것은 고장이 아니라 시작점이라, 오류 화면 대신 준비 안내로 보낸다.
+    if (!isBranchMissing(err)) throw err;
+    return { branch: false, habits: false, checks: false, description: false };
+  }
+
   const tables = new Set(
     (res.rows ?? []).map((r) => str(Object.values(r)[0]).toLowerCase()),
   );
 
   const shape: Shape = {
+    branch: true,
     habits: tables.has("habits"),
     checks: tables.has("checks"),
     description: false,
@@ -137,6 +149,17 @@ export async function inspect(db: string, branch: string): Promise<Shape> {
     (r) => str(r["Field"]).toLowerCase() === "description",
   );
   return shape;
+}
+
+/**
+ * 브랜치가 없다는 DoltHub의 대답인지 본다.
+ *
+ * 문자열을 보고 판단하는 것은 무르지만, 이 상태를 다른 오류와 구별할 방법이
+ * API에 없다. 못 알아보면 예전처럼 오류 화면으로 떨어질 뿐이라 손해가 없다.
+ */
+export function isBranchMissing(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /branch not found/i.test(msg);
 }
 
 /**

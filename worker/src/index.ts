@@ -126,7 +126,7 @@ async function handleList(request: Request, ctx: Ctx): Promise<Response> {
     state = await dolt.pull(ctx.db, ctx.branch);
   } catch (err) {
     const shape = await dolt.inspect(ctx.db, ctx.branch);
-    if (dolt.migrations(shape).length > 0) {
+    if (!shape.branch || dolt.migrations(shape).length > 0) {
       return new Response(renderPrepare(shape, ctx.token !== ""), { headers: HTML });
     }
     throw err;
@@ -155,7 +155,17 @@ async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
     });
   }
 
-  await dolt.write(ctx.token, ctx.db, ctx.branch, stmts);
+  try {
+    await dolt.write(ctx.token, ctx.db, ctx.branch, stmts);
+  } catch (err) {
+    // 여기서 막히는 길은 둘이다. 브랜치가 없어 쓸 자리가 없거나,
+    // 쓰기 엔드포인트가 DDL을 받지 않거나. 어느 쪽이든 사람이 할 일은 같다.
+    return toast(
+      `DB를 준비하지 못했습니다: ${message(err)} — DoltHub에서 이 DB를 열고 ` +
+        `SQL Query로 스키마 SQL을 한 번 실행해 커밋해 주세요. 그다음에는 앱이 이어받습니다.`,
+      502,
+    );
+  }
 
   const state = await dolt.pull(ctx.db, ctx.branch);
   return new Response(
