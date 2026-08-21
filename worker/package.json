@@ -3,13 +3,15 @@
   "private": true,
   "description": "habit-chain — 전면 HTMX. 화면 렌더링 + DoltHub 읽기/쓰기",
   "scripts": {
-    "dev": "wrangler dev --port 8788",
-    "deploy": "wrangler deploy",
+    "build": "rm -rf dist && mkdir -p dist && cp -R ../web/. dist/ && esbuild src/index.ts --bundle --format=esm --outfile=dist/_worker.js",
+    "dev": "npm run build && wrangler pages dev --port 8788",
+    "deploy": "npm run build && wrangler pages deploy",
     "test": "vitest run",
     "check": "tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260821.1",
+    "esbuild": "^0.25.0",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
     "wrangler": "^4.125.0"

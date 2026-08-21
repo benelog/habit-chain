@@ -3,6 +3,9 @@ worker/.dev.vars
 worker/.wrangler/
 worker/node_modules/
 
+# 빌드 산출물
+worker/dist/
+
 # 편집기
 .DS_Store
 *.swp

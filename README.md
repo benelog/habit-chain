@@ -6,7 +6,7 @@
 TypeScript로 짠 Cloudflare Worker가 화면을 그리고, 브라우저는 [htmx](https://htmx.org)가 조각을 갈아끼웁니다.
 데이터는 [DoltHub](https://www.dolthub.com)에 버전 관리된 채로 쌓입니다.
 
-- **앱**: https://habit-chain.habit-chain-worker.workers.dev
+- **앱**: https://chain.benelog.net
 - **데이터**: https://www.dolthub.com/repositories/benelog/habit-chain
 
 ## 왜 이런 구조인가
@@ -90,14 +90,16 @@ cat > .dev.vars <<'VARS'
 DOLTHUB_TOKEN=<DoltHub 토큰>
 WRITE_KEY=<아무 문자열>
 VARS
-npm run dev        # http://localhost:8788 — 빌드 단계 없음
+npm run dev        # http://localhost:8788
 
 npm test           # vitest
 npm run check      # tsc --noEmit
+npm run build      # dist/ 만 다시 만든다
 ```
 
-빌드 산출물이 없습니다. wrangler가 TypeScript를 그대로 물고, `web/` 아래 자산은
-저장하는 즉시 반영됩니다.
+`npm run dev`는 매번 `npm run build`를 먼저 돌립니다. 빌드라고 해봐야 `web/`을 `dist/`로
+복사하고 esbuild가 `src/index.ts`를 `dist/_worker.js` 하나로 묶는 게 전부입니다(수십 밀리초).
+자산이나 코드를 고쳤으면 `npm run dev`를 다시 띄우세요.
 
 로컬에서 실제 DoltHub를 건드리기 싫다면 `.dev.vars`에 한 줄 더하면 됩니다 —
 `.dev.vars`가 `wrangler.jsonc`의 `vars`를 덮습니다.
@@ -115,10 +117,17 @@ ALLOWED_DB=<owner>/<dev용 DB>
 
 ```bash
 cd worker
-npx wrangler secret put DOLTHUB_TOKEN   # DoltHub → Settings → Tokens
-npx wrangler secret put WRITE_KEY       # 앱 설정에 넣을 공유 비밀
-npx wrangler deploy
+npx wrangler pages secret put DOLTHUB_TOKEN   # DoltHub → Settings → Tokens
+npx wrangler pages secret put WRITE_KEY       # 앱 설정에 넣을 공유 비밀
+npm run deploy                                # 빌드 후 wrangler pages deploy
 ```
+
+**Worker가 아니라 Pages인 이유는 도메인 하나 때문입니다.** `benelog.net`의 DNS는 Netlify에 있는데,
+Workers 커스텀 도메인은 그 도메인이 Cloudflare 존일 것을 요구하고 서브도메인만 따로 존으로 떼는 것은
+Enterprise 전용입니다. Pages는 서브도메인이면 외부 DNS에 CNAME 한 줄(`chain` → `habit-chain.pages.dev`)로 붙습니다.
+코드는 그대로입니다 — Pages advanced mode는 빌드 산출물의 `_worker.js` 하나에 모든 요청을 먼저 주고,
+`env.ASSETS`로 정적 자산을 넘기는 방식이 Worker + Static Assets 때와 같습니다.
+덕분에 `run_worker_first` 같은 설정이 필요 없어졌습니다.
 
 이후 push마다 `.github/workflows/worker.yml`이 타입 검사와 테스트를 돌리고 자동 배포합니다.
 저장소 시크릿에 `CLOUDFLARE_API_TOKEN`과 `CLOUDFLARE_ACCOUNT_ID`가 필요하고,
@@ -128,7 +137,7 @@ npx wrangler deploy
 `sql/schema.sql`을 DoltHub의 SQL 콘솔에 붙여넣고 커밋하거나, 앱 설정의 `스키마 SQL 보기`(`/schema.sql`)에서 받아 쓰세요.
 
 `WRITE_KEY`는 선택이지만 권합니다. 설정하지 않으면 입력란 자체가 사라져 설정할 것이 아무것도 없어지지만,
-Worker 주소를 아는 누구나 `ALLOWED_DB`에 임의 SQL을 실행할 수 있습니다.
+앱 주소를 아는 누구나 `ALLOWED_DB`에 임의 SQL을 실행할 수 있습니다.
 Dolt가 버전 관리를 하니 되돌릴 수는 있어도 손이 갑니다.
 
 ## 화면의 규칙

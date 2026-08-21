@@ -1,4 +1,4 @@
-name: Deploy Cloudflare Worker
+name: Deploy Cloudflare Pages
 
 on:
   push:
@@ -34,6 +34,11 @@ jobs:
       - name: 서비스 워커 캐시 버전 갱신
         run: sed -i "s/const BUILD_ID = \"dev\";/const BUILD_ID = \"${GITHUB_SHA::12}\";/" web/sw.js
 
+      # 빌드는 sw.js를 고친 뒤여야 한다. web/ 을 dist/ 로 복사하기 때문이다.
+      - name: 빌드
+        working-directory: worker
+        run: npm run build
+
       # DOLTHUB_TOKEN·WRITE_KEY는 `wrangler secret put` 으로 따로 넣는다.
       # 배포는 그 값을 건드리지 않는다.
       - name: Cloudflare 시크릿 확인
@@ -56,3 +61,4 @@ jobs:
           workingDirectory: worker
           wranglerVersion: '4.125.0'
           packageManager: npm
+          command: pages deploy --project-name habit-chain --branch main --commit-dirty=true
