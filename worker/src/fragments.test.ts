@@ -152,7 +152,8 @@ describe("renderSetup", () => {
     const html = renderSetup();
     expect(html).toContain("class=\"empty setup\"");
     expect(html).toContain("showModal()");
-    expect(html).toContain("/schema.sql");
+    // 스키마 SQL 링크는 설정과 준비 화면에만 남는다.
+    expect(html).not.toContain("/schema.sql");
   });
 });
 

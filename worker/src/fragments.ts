@@ -130,7 +130,7 @@ export function renderSetup(): string {
     <h2>DoltHub DB를 연결하세요</h2>
     <p>이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.</p>
     <ol class="setup-steps">
-      <li>DoltHub에 <b>빈 DB</b>를 하나 만듭니다. 표는 앱이 만듭니다.</li>
+      <li>DoltHub에 <b>빈 DB</b>를 하나 만듭니다. DB의 스키마는 앱이 만듭니다.</li>
       <li>DoltHub의 <code>Settings → Tokens</code>에서 토큰을 발급합니다.</li>
       <li>설정에 <code>owner/name</code>과 토큰을 넣고 <b>저장</b>합니다.</li>
     </ol>
@@ -138,7 +138,6 @@ export function renderSetup(): string {
     <div class="chips">
       <button class="primary" type="button" onclick="document.getElementById('settings').showModal()">설정 열기</button>
       <a class="ghost" href="/help">처음이신가요? 안내 보기</a>
-      <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
     </div>
   </div>`;
 }
