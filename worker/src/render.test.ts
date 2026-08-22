@@ -174,6 +174,7 @@ describe("publicShell", () => {
     expect(html).toContain('property="og:title" content="정상혁의 습관 달력"');
     expect(html).toContain('property="og:description" content="제가 실천하는 습관들"');
     expect(html).toContain('property="og:url" content="https://chain.benelog.net/@benelog/habit-chain"');
+    expect(html).toContain('property="og:image" content="https://chain.benelog.net/icons/icon-512.png"');
     expect(html).toContain('hx-get="/@benelog/habit-chain/habits"');
   });
 

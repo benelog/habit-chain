@@ -282,6 +282,10 @@ export function publicShell(db: string, meta: Meta, origin: string): string {
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(pageUrl)}">
+<meta property="og:image" content="${esc(origin)}/icons/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
 <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
