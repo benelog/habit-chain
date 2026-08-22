@@ -46,6 +46,11 @@ describe("updateHabit", () => {
     const sql = updateHabit("a-1", "달리기", "don't break the chain");
     expect(sql).toContain("'don\\'t break the chain'");
   });
+
+  it("색은 준 경우에만 바꾼다 — 안 주면 color에 손대지 않는다", () => {
+    expect(updateHabit("a-1", "달리기", "", "#3fa34d")).toContain("color = '#3fa34d'");
+    expect(updateHabit("a-1", "달리기", "")).not.toContain("color");
+  });
 });
 
 describe("migrations", () => {

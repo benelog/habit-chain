@@ -355,9 +355,9 @@ async function handleToggle(
 }
 
 /**
- * Edits name and description. Answers in handleToggle's shape — one card, the
- * day summary out-of-band, one announcement. The summary is redrawn because the
- * habit name also appears in its tick titles.
+ * Edits name, description, and colour. Answers in handleToggle's shape — one
+ * card, the day summary out-of-band, one announcement. The summary is redrawn
+ * because the habit name and colour also appear in its tick marks.
  */
 async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<Response> {
   const guard = requireWrite(ctx);
@@ -369,6 +369,9 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
     return toast("습관 이름을 넣으세요.", 400);
   }
   const description = normalizeDesc(String(form.get("description") ?? ""));
+  // Absent or malformed means "leave the colour alone", never "default it".
+  const colorRaw = String(form.get("color") ?? "");
+  const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : undefined;
 
   const today = todayOf(request);
   let state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
@@ -381,7 +384,7 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
   }
 
   await dolt.write(ctx.token, ctx.db, ctx.branch, [
-    dolt.updateHabit(habitID, name.slice(0, 60), description),
+    dolt.updateHabit(habitID, name.slice(0, 60), description, color),
   ]);
 
   state = await dolt.pull(ctx.db, ctx.branch, ctx.token);

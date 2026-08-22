@@ -52,6 +52,17 @@ describe("shell", () => {
     expect(html).not.toContain("og:title");
   });
 
+  it("처음 온 브라우저는 안내로 한 번만 보낸다", () => {
+    const src = inlineScript(shell());
+    // 표식 저장이 실패하면 그대로 머문다 — /help와 / 사이 무한 이동을 막는다.
+    expect(src).toContain('localStorage.setItem("habit-chain.seen", "1")');
+    expect(src).toContain('location.replace("/help")');
+  });
+
+  it("사슬 규칙은 설정이 아니라 /help가 설명한다", () => {
+    expect(shell()).not.toContain("사슬 규칙");
+  });
+
   it("토큰은 페이지의 달력과 이름이 같은 프로필에서만 나온다", () => {
     const src = inlineScript(shell());
     expect(src).toContain("p.db === this.db()");
@@ -210,6 +221,16 @@ describe("renderHabits", () => {
     expect(html).toContain('name="name" type="text" value="달리기"');
     // The textarea's content is the form default that cancel resets to.
     expect(html).toContain("아침에 30분.\n비 오면 실내에서.</textarea>");
+  });
+
+  it("편집 폼에서 색을 고칠 수 있고, 지금 색이 선택돼 있다", () => {
+    const html = renderHabits(state, today);
+    expect(html).toContain('value="#e2542f" checked');
+    // 목록에 없는 옛 색이면 아무것도 선택하지 않는다 — 서버가 색을 지킨다.
+    const legacy: State = { ...state, habits: [{ ...state.habits[0]!, color: "#f97316" }] };
+    const form = /<form class="card-edit"[\s\S]*?<\/form>/.exec(renderHabits(legacy, today))![0];
+    expect(form).toContain('name="color"');
+    expect(form).not.toContain("checked");
   });
 
   it("설명에 든 태그는 화면으로 새지 않는다", () => {

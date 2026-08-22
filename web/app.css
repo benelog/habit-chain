@@ -306,7 +306,12 @@ body.viewer .add-form { display: none; }
 }
 .card-edit textarea { resize: vertical; min-height: 84px; line-height: 1.6; font-size: 13.5px; }
 .card-edit input:focus, .card-edit textarea:focus { border-color: var(--muted); }
-.edit-row { display: flex; justify-content: flex-end; gap: 8px; }
+/* Swatches sit left, buttons right; narrow cards wrap them onto two lines. */
+.edit-row {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 10px; flex-wrap: wrap;
+}
+.edit-btns { display: flex; gap: 8px; margin-left: auto; }
 
 .card-body {
   display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap;

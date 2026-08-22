@@ -415,12 +415,15 @@ export function upsertHabit(h: Habit): string {
 }
 
 /**
- * Name and description only. upsertHabit would work but needs created_at, and a
- * stale value there silently rewrites when the habit was made.
+ * Name, description, and optionally colour. upsertHabit would work but needs
+ * created_at, and a stale value there silently rewrites when the habit was
+ * made. The colour is set only when given — an edit form whose habit wears a
+ * colour outside the swatch set submits none, and that must not repaint it.
  */
-export function updateHabit(id: string, name: string, description: string): string {
+export function updateHabit(id: string, name: string, description: string, color?: string): string {
+  const paint = color === undefined ? "" : `, color = ${sqlEscape(color)}`;
   return (
-    `UPDATE habits SET name = ${sqlEscape(name)}, description = ${sqlEscape(description)} ` +
+    `UPDATE habits SET name = ${sqlEscape(name)}, description = ${sqlEscape(description)}${paint} ` +
     `WHERE id = ${sqlEscape(id)};`
   );
 }

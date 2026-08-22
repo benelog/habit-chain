@@ -53,6 +53,19 @@ function md(d: DateStr): string {
 }
 
 /**
+ * The eight swatches as radio inputs. A colour outside the set — a legacy
+ * default, say — checks nothing; the server then leaves the colour alone.
+ */
+function swatchInputs(checked: string): string {
+  return SWATCHES.map(
+    (c, i) =>
+      `<label style="--sw:${c}"><input type="radio" name="color" value="${c}"${
+        c === checked ? " checked" : ""
+      } aria-label="색 ${i + 1}"><span></span></label>`,
+  ).join("");
+}
+
+/**
  * Shared htmx attributes for toggle buttons.
  *
  * Without hx-disabled-elt the 2s round trip invites double taps. INSERT IGNORE
@@ -328,8 +341,11 @@ function renderEdit(h: Habit): string {
     <textarea id="e-desc-${id}" name="description" rows="4" maxlength="2000"
       placeholder="여러 줄로 적어도 됩니다.">${esc(h.description)}</textarea>
     <div class="edit-row">
-      <button type="button" class="ghost" onclick="habitChain.cancelEdit(this)">취소</button>
-      <button type="submit" class="primary">저장</button>
+      <div class="swatches" role="radiogroup" aria-label="사슬 색">${swatchInputs(h.color)}</div>
+      <div class="edit-btns">
+        <button type="button" class="ghost" onclick="habitChain.cancelEdit(this)">취소</button>
+        <button type="submit" class="primary">저장</button>
+      </div>
     </div>
   </form>
 `;
@@ -525,12 +541,7 @@ export function shell(opts: ShellOpts = {}): string {
 `
     : "";
 
-  const swatches = SWATCHES.map(
-    (c, i) =>
-      `<label style="--sw:${c}"><input type="radio" name="color" value="${c}"${
-        i === 0 ? " checked" : ""
-      } aria-label="색 ${i + 1}"><span></span></label>`,
-  ).join("");
+  const swatches = swatchInputs(SWATCHES[0]!);
 
   return `<!DOCTYPE html>
 <html lang="ko">
@@ -665,13 +676,6 @@ ${
         </div>
       </fieldset>
 
-      <fieldset>
-        <legend>사슬 규칙</legend>
-        <p class="hint">
-          오늘 아직 체크하지 않았어도, 어제까지 이어져 있으면 사슬은 살아 있습니다.
-          하루를 통째로 건너뛰어야 끊어집니다. 끊긴 자리에는 빨간 눈금이 남습니다.
-        </p>
-      </fieldset>
     </div>
   </dialog>
 
@@ -1095,11 +1099,23 @@ window.habitChain = {
   }
   if (location.pathname !== "/") return;
   const list = window.habitChain.profiles();
+  if (list.length === 0) {
+    // A brand-new browser goes to the guide — once. From the second visit the
+    // setup screen takes over, so coming back from /help never bounces. The
+    // mark must stick before we leave: if storage refuses it, stay here.
+    try {
+      if (localStorage.getItem("habit-chain.seen") === null) {
+        localStorage.setItem("habit-chain.seen", "1");
+        location.replace("/help");
+      }
+    } catch {}
+    return;
+  }
   if (list.length === 1) {
     location.replace("/@" + list[0].db);
     return;
   }
-  if (list.length >= 2) window.habitChain.renderPicker(list);
+  window.habitChain.renderPicker(list);
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
