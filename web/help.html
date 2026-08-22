@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>시작 안내 — Habit Chain</title>
+<meta name="description" content="DoltHub 가입부터 DB 만들기, 토큰 발급, Habit Chain 연결까지 — 처음 쓰는 사람을 위한 순서대로 안내.">
+<!-- Link previews (Facebook, KakaoTalk, …). og:image must be an absolute URL. -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="Habit Chain 시작 안내">
+<meta property="og:description" content="DoltHub 가입부터 DB 만들기, 토큰 발급, 앱 연결까지 — 처음 쓰는 사람을 위한 순서대로 안내.">
+<meta property="og:url" content="https://chain.benelog.net/help">
+<meta property="og:image" content="https://chain.benelog.net/icons/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<style>
+  /* Guide-only styles. The shell stays greyscale; --hl marks "press here". */
+  .help-lead { font-size: 14px; color: var(--muted); line-height: 1.7; max-width: 56ch; margin: 6px 0 0; }
+  .help-lead b { color: var(--text); font-weight: 600; }
+  .step { margin: 34px 0 0; }
+  .step h2 {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 0 10px; font-size: 16px; letter-spacing: -.01em;
+  }
+  .step-no {
+    flex: none; width: 26px; height: 26px; border-radius: 999px;
+    display: grid; place-content: center;
+    background: var(--text); color: var(--bg);
+    font-size: 13px; font-variation-settings: "wdth" 110, "wght" 700;
+  }
+  .step p { font-size: 13.5px; line-height: 1.7; color: var(--muted); margin: 0 0 10px; max-width: 60ch; }
+  .step p b, .step li b { color: var(--text); font-weight: 600; }
+  .step ol { margin: 0 0 10px; padding-left: 20px; font-size: 13.5px; line-height: 1.9; color: var(--muted); }
+  .step code {
+    font-size: 12px; background: var(--panel-2); border-radius: 5px;
+    padding: 1px 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text);
+  }
+  .step a { color: var(--text); text-decoration-color: var(--muted); text-underline-offset: 2px; }
+
+  /* A screenshot when web/help/*.png exists; the drawn mockup otherwise. */
+  .shot { margin: 14px 0 0; }
+  .shot img {
+    display: block; width: 100%; height: auto; border-radius: var(--radius);
+    border: 1px solid var(--line);
+  }
+  .shot .mock { display: none; width: 100%; height: auto; }
+  .shot.no-shot img { display: none; }
+  .shot.no-shot .mock { display: block; }
+  .shot figcaption { margin-top: 7px; font-size: 12px; color: var(--muted); }
+
+  .note {
+    margin: 12px 0 0; padding: 10px 13px; max-width: 60ch;
+    border: 1px solid color-mix(in oklab, var(--break) 35%, var(--line));
+    border-radius: 10px; font-size: 12.5px; line-height: 1.65; color: var(--muted);
+  }
+  .note b { color: var(--break); }
+  .help-foot { margin: 40px 0 0; padding-top: 18px; border-top: 1px solid var(--line-soft); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <h1 class="wordmark">
+      <svg viewBox="0 0 30 16" width="28" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="10" rx="5"/><rect x="14" y="3" width="15" height="10" rx="5"/></svg>
+      Habit Chain
+    </h1>
+    <a class="ghost" href="/">앱 열기</a>
+  </header>
+
+  <main>
+    <h1 style="margin:8px 0 0; font-size:22px; letter-spacing:-.02em;">처음 오셨나요?</h1>
+    <p class="help-lead">
+      Habit Chain은 기록을 이 서버가 아니라 <b>여러분의 DoltHub DB</b>에 저장합니다.
+      그래서 시작할 때 딱 한 번, DoltHub 쪽 준비가 필요합니다.
+      아래 순서대로 따라오면 5분이면 끝납니다 — 가입, DB 만들기, 토큰 발급, 그리고 연결.
+    </p>
+
+    <!-- ── 1. 가입 ─────────────────────────────────── -->
+    <section class="step">
+      <h2><span class="step-no">1</span>DoltHub 가입</h2>
+      <p>
+        <a href="https://www.dolthub.com" target="_blank" rel="noopener">dolthub.com</a>에 들어가
+        오른쪽 위 <b>Sign In</b>을 누릅니다. GitHub나 Google 계정이 있다면 그걸로 바로 가입됩니다.
+        무료 요금제면 충분합니다.
+      </p>
+      <figure class="shot">
+        <img src="/help/signup.png" alt="DoltHub 첫 화면. 오른쪽 위 Sign In 버튼을 누르고 GitHub 또는 Google로 계속하기를 고른다."
+          loading="lazy" onerror="this.parentElement.classList.add('no-shot')">
+        <svg class="mock" viewBox="0 0 640 320" role="img"
+          aria-label="DoltHub 첫 화면 그림. 오른쪽 위 Sign In 버튼이 강조되어 있고, 가운데에 GitHub/Google로 계속하기 버튼이 있다.">
+          <rect x="0" y="0" width="640" height="320" rx="14" fill="var(--panel)" stroke="var(--line)"/>
+          <circle cx="22" cy="18" r="4" fill="var(--line)"/><circle cx="36" cy="18" r="4" fill="var(--line)"/><circle cx="50" cy="18" r="4" fill="var(--line)"/>
+          <rect x="70" y="9" width="220" height="18" rx="9" fill="var(--panel-2)"/>
+          <text x="80" y="22" font-size="11" fill="var(--muted)" font-family="inherit">https://www.dolthub.com</text>
+          <line x1="0" y1="36" x2="640" y2="36" stroke="var(--line)"/>
+          <text x="24" y="66" font-size="14" font-weight="700" fill="var(--text)" font-family="inherit">DOLTHUB</text>
+          <text x="120" y="66" font-size="12" fill="var(--muted)" font-family="inherit">Repositories</text>
+          <text x="205" y="66" font-size="12" fill="var(--muted)" font-family="inherit">Docs</text>
+          <rect x="540" y="50" width="76" height="24" rx="7" fill="var(--text)"/>
+          <text x="578" y="66" font-size="12" font-weight="600" fill="var(--bg)" text-anchor="middle" font-family="inherit">Sign In</text>
+          <rect x="534" y="44" width="88" height="36" rx="10" fill="none" stroke="#e2542f" stroke-width="2"/>
+          <text x="578" y="98" font-size="11" fill="#e2542f" text-anchor="middle" font-family="inherit">① 여기부터</text>
+          <rect x="190" y="140" width="260" height="34" rx="9" fill="var(--panel-2)" stroke="var(--line)"/>
+          <text x="320" y="162" font-size="12.5" fill="var(--text)" text-anchor="middle" font-family="inherit">Continue with GitHub</text>
+          <rect x="190" y="184" width="260" height="34" rx="9" fill="var(--panel-2)" stroke="var(--line)"/>
+          <text x="320" y="206" font-size="12.5" fill="var(--text)" text-anchor="middle" font-family="inherit">Continue with Google</text>
+          <text x="320" y="250" font-size="11.5" fill="var(--muted)" text-anchor="middle" font-family="inherit">② 쓰던 계정으로 이어서 가입</text>
+        </svg>
+        <figcaption>DoltHub 화면은 바뀔 수 있습니다. 그림은 이해를 돕기 위한 재구성입니다.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ── 2. DB 만들기 ─────────────────────────────── -->
+    <section class="step">
+      <h2><span class="step-no">2</span>빈 DB 만들기</h2>
+      <p>
+        로그인하면 <b>Create database</b>(+ 버튼)로 새 DB를 만듭니다. 이름은 자유지만
+        <code>habit-chain</code>처럼 알아보기 쉬운 이름을 권합니다. 표는 만들 필요 없습니다 —
+        <b>앱이 스스로 만듭니다.</b>
+      </p>
+      <p>
+        공개 범위는 여기서 정합니다. <b>Public</b>이면 나중에 내 습관 달력을
+        주소 하나로 다른 사람에게 보여줄 수 있고, <b>Private</b>이면 나만 봅니다.
+        기록 내용이 공개되어도 괜찮다면 Public을 고르세요.
+      </p>
+      <figure class="shot">
+        <img src="/help/create-db.png" alt="DoltHub의 Create database 화면. 이름을 habit-chain으로 넣고 Public을 고른 뒤 만들기를 누른다."
+          loading="lazy" onerror="this.parentElement.classList.add('no-shot')">
+        <svg class="mock" viewBox="0 0 640 330" role="img"
+          aria-label="DoltHub의 새 DB 만들기 화면 그림. Database name에 habit-chain을 넣고 Public을 고른 뒤 Create database를 누른다.">
+          <rect x="0" y="0" width="640" height="330" rx="14" fill="var(--panel)" stroke="var(--line)"/>
+          <text x="24" y="40" font-size="15" font-weight="700" fill="var(--text)" font-family="inherit">Create a new database</text>
+          <text x="24" y="80" font-size="11.5" fill="var(--muted)" font-family="inherit">Owner</text>
+          <rect x="24" y="90" width="180" height="30" rx="8" fill="var(--panel-2)" stroke="var(--line)"/>
+          <text x="36" y="110" font-size="12" fill="var(--text)" font-family="inherit">내 계정 이름</text>
+          <text x="220" y="110" font-size="13" fill="var(--muted)" font-family="inherit">/</text>
+          <text x="236" y="80" font-size="11.5" fill="var(--muted)" font-family="inherit">Database name</text>
+          <rect x="236" y="90" width="220" height="30" rx="8" fill="var(--panel-2)" stroke="#e2542f" stroke-width="1.6"/>
+          <text x="248" y="110" font-size="12" fill="var(--text)" font-family="inherit">habit-chain</text>
+          <circle cx="32" cy="160" r="7" fill="none" stroke="#e2542f" stroke-width="2"/>
+          <circle cx="32" cy="160" r="3" fill="#e2542f"/>
+          <text x="48" y="164" font-size="12.5" fill="var(--text)" font-family="inherit">Public</text>
+          <text x="100" y="164" font-size="11.5" fill="var(--muted)" font-family="inherit">— 누구나 볼 수 있음 · 공유 주소를 쓰려면 이쪽</text>
+          <circle cx="32" cy="192" r="7" fill="none" stroke="var(--line)" stroke-width="2"/>
+          <text x="48" y="196" font-size="12.5" fill="var(--text)" font-family="inherit">Private</text>
+          <text x="102" y="196" font-size="11.5" fill="var(--muted)" font-family="inherit">— 나만 봄 · 읽기에도 토큰 필요</text>
+          <rect x="24" y="240" width="150" height="32" rx="9" fill="var(--text)"/>
+          <text x="99" y="261" font-size="12.5" font-weight="600" fill="var(--bg)" text-anchor="middle" font-family="inherit">Create database</text>
+          <text x="24" y="304" font-size="11.5" fill="var(--muted)" font-family="inherit">만들어진 DB의 이름이 곧 앱 설정에 넣을 값입니다:  내계정이름/habit-chain</text>
+        </svg>
+        <figcaption>표(스키마)는 비워 두세요. 앱이 연결 후 「DB 준비하기」 버튼으로 직접 만듭니다.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ── 3. 토큰 발급 ─────────────────────────────── -->
+    <section class="step">
+      <h2><span class="step-no">3</span>토큰 발급</h2>
+      <p>
+        체크를 기록하려면 쓰기 권한이 필요합니다. DoltHub 오른쪽 위 프로필 →
+        <b>Settings → Tokens</b>로 가서 <b>Create token</b>을 누르세요.
+        바로 가는 주소는 <a href="https://www.dolthub.com/settings/tokens" target="_blank"
+        rel="noopener"><code>dolthub.com/settings/tokens</code></a>입니다.
+      </p>
+      <figure class="shot">
+        <img src="/help/token.png" alt="DoltHub Settings의 Tokens 화면. Create token을 누르면 토큰 문자열이 한 번 표시되며, 그때 복사해 둔다."
+          loading="lazy" onerror="this.parentElement.classList.add('no-shot')">
+        <svg class="mock" viewBox="0 0 640 300" role="img"
+          aria-label="DoltHub 토큰 설정 화면 그림. 왼쪽 메뉴에서 Tokens를 고르고 Create token을 누르면 토큰이 한 번 표시된다. 복사 버튼이 강조되어 있다.">
+          <rect x="0" y="0" width="640" height="300" rx="14" fill="var(--panel)" stroke="var(--line)"/>
+          <line x1="170" y1="0" x2="170" y2="300" stroke="var(--line-soft)"/>
+          <text x="24" y="46" font-size="12" fill="var(--muted)" font-family="inherit">Profile</text>
+          <rect x="12" y="62" width="146" height="26" rx="7" fill="var(--panel-2)"/>
+          <text x="24" y="80" font-size="12" font-weight="600" fill="var(--text)" font-family="inherit">Tokens</text>
+          <text x="24" y="114" font-size="12" fill="var(--muted)" font-family="inherit">Billing</text>
+          <text x="200" y="46" font-size="14" font-weight="700" fill="var(--text)" font-family="inherit">API Tokens</text>
+          <rect x="500" y="30" width="116" height="28" rx="8" fill="var(--text)"/>
+          <text x="558" y="49" font-size="12" font-weight="600" fill="var(--bg)" text-anchor="middle" font-family="inherit">Create token</text>
+          <rect x="200" y="90" width="416" height="40" rx="9" fill="var(--panel-2)" stroke="var(--line)"/>
+          <text x="214" y="115" font-size="12" fill="var(--text)" font-family="ui-monospace, monospace">dhat.v1.m4x2…(토큰 문자열)…q8yz</text>
+          <rect x="560" y="96" width="48" height="28" rx="7" fill="none" stroke="#e2542f" stroke-width="2"/>
+          <text x="584" y="115" font-size="11" fill="#e2542f" text-anchor="middle" font-family="inherit">복사</text>
+          <text x="200" y="160" font-size="11.5" fill="var(--muted)" font-family="inherit">토큰 전체 값은 만든 직후 딱 한 번만 보여 줍니다. 이때 복사해 두세요.</text>
+        </svg>
+        <figcaption>토큰을 잃어버렸다면 지우고 새로 만들면 됩니다.</figcaption>
+      </figure>
+      <p class="note">
+        <b>토큰은 비밀번호처럼 다루세요.</b> 이 앱은 토큰을 서버에 저장하지 않고 여러분의
+        브라우저에만 둡니다. 공용 컴퓨터에서는 쓰고 난 뒤 설정의 「저장한 값 지우기」를 눌러 지우세요.
+      </p>
+    </section>
+
+    <!-- ── 4. 앱에 연결 ─────────────────────────────── -->
+    <section class="step">
+      <h2><span class="step-no">4</span>앱에 연결</h2>
+      <ol>
+        <li><a href="/">Habit Chain</a>을 열고 오른쪽 위 톱니(설정)를 누릅니다.</li>
+        <li><b>DB 이름</b>에 <code>내계정이름/habit-chain</code>처럼 <code>owner/name</code>을 넣습니다.</li>
+        <li><b>토큰</b>에 방금 복사한 값을 붙여 넣고 <b>저장</b>을 누릅니다. 토큰이 맞는지 그 자리에서 확인해 줍니다.</li>
+        <li>목록 자리에 <b>「DB 준비하기」</b> 버튼이 뜨면 누르세요. 앱이 여러분의 토큰으로 표를 만듭니다.</li>
+      </ol>
+      <p>여기까지 하면 끝입니다. 첫 습관을 추가하고 오늘 칸을 채우세요.</p>
+    </section>
+
+    <!-- ── 5. 공개 페이지 ───────────────────────────── -->
+    <section class="step">
+      <h2><span class="step-no">5</span>내 달력 공유하기 <small style="font-weight:500; font-size:12px; color:var(--muted)">(선택, 공개 DB만)</small></h2>
+      <p>
+        DB를 Public으로 만들었다면 <code>이 앱 주소/@owner/name</code>이 곧 <b>내 습관 달력의 공유 주소</b>가
+        됩니다. 보는 사람은 가입도 토큰도 필요 없습니다 — 체크는 못 하고 구경만 합니다.
+      </p>
+      <p>
+        설정의 <b>공개 페이지</b>에서 제목과 설명을 적을 수 있습니다.
+        예를 들어 제목을 「정상혁의 습관 달력」, 설명을 「제가 실천하고 있는 습관의 목록입니다」로
+        적으면, 공유 주소를 받은 사람에게 그 제목이 페이지 맨 위와 링크 미리보기에 함께 보입니다.
+      </p>
+    </section>
+
+    <footer class="help-foot">
+      <div class="chips" style="justify-content:flex-start;">
+        <a class="ghost" href="/">← 앱으로 돌아가기</a>
+        <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
+        <a class="ghost" href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub 열기</a>
+      </div>
+    </footer>
+  </main>
+</div>
+</body>
+</html>
