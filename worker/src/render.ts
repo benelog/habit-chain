@@ -507,6 +507,7 @@ export function shell(opts: ShellOpts = {}): string {
   // update them in place, and :empty CSS keeps a blank one invisible.
   const calHead = isCal
     ? `
+  <nav id="cal-switch" class="cal-switch" aria-label="내 달력" hidden></nav>
   <div class="public-head">
     <h1 class="public-title" id="cal-title">${esc(title)}</h1>
     <p class="public-desc" id="cal-desc">${esc(meta.description)}</p>
@@ -873,6 +874,38 @@ window.habitChain = {
       row.appendChild(del);
       box.appendChild(row);
     }
+    // The shortcut row above the calendar mirrors this list; keep it in step.
+    this.renderCalSwitch();
+  },
+  /* 내 다른 달력으로 건너가는 지름길. 어느 달력이 저장돼 있는지는 이
+     브라우저만 알므로 서버가 아니라 여기서 그린다. 갈 곳이 없으면 숨는다. */
+  renderCalSwitch() {
+    const nav = document.getElementById("cal-switch");
+    if (!nav) return;
+    nav.textContent = "";
+    nav.hidden = true;
+    const here = this.pathDb();
+    const list = this.profiles();
+    if (!list.some((p) => p.db !== here)) return;
+    // 이름만으로 겹치면 owner까지 붙인다. 겹치지 않으면 짧은 쪽이 읽기 쉽다.
+    const names = list.map((p) => p.db.split("/")[1]);
+    for (const prof of list) {
+      const short = prof.db.split("/")[1];
+      const label = names.filter((n) => n === short).length > 1 ? prof.db : short;
+      let chip;
+      if (prof.db === here) {
+        chip = document.createElement("span");
+        chip.setAttribute("aria-current", "page");
+      } else {
+        chip = document.createElement("a");
+        chip.href = "/@" + prof.db;
+      }
+      chip.className = "cal-chip" + (prof.db === here ? " now" : "");
+      chip.textContent = label;
+      chip.title = prof.db;
+      nav.appendChild(chip);
+    }
+    nav.hidden = false;
   },
   /* 하나의 폼이 추가와 수정을 겸한다. 제목이 지금 어느 쪽인지 말해 준다. */
   openForm(db) {
@@ -1057,6 +1090,7 @@ window.habitChain = {
   if (here !== "") {
     const mine = window.habitChain.profiles().find((p) => p.db === here);
     if (!mine || mine.token === "") document.body.classList.add("viewer");
+    window.habitChain.renderCalSwitch();
     return;
   }
   if (location.pathname !== "/") return;

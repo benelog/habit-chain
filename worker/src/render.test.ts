@@ -111,6 +111,13 @@ describe("shell · 달력 페이지(/@owner/name)", () => {
     expect(home).not.toContain('id="share-url"');
   });
 
+  it("달력 전환 지름길은 달력 페이지에만 있고, 채우기 전에는 숨어 있다", () => {
+    const cal = shell({ db: "a/b", meta: { title: "", description: "" }, origin: "https://x.test" });
+    expect(cal).toContain('id="cal-switch" class="cal-switch" aria-label="내 달력" hidden');
+    expect(cal).toContain("renderCalSwitch");
+    expect(shell()).not.toContain('id="cal-switch"');
+  });
+
   it("달력 폼은 접혀 있고, 추가와 수정을 겸한다", () => {
     const html = shell();
     expect(html).toContain('id="profile-form" class="profile-form" hidden');

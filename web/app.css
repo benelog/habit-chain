@@ -153,6 +153,19 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 .day.all-done .day-count b { color: var(--text); }
 
 /* ── Calendar page (/@owner/name) ─────────────────── */
+/* 내 다른 달력으로 건너가는 지름길. 프로필이 있는 브라우저에서만 보인다. */
+.cal-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 4px; }
+.cal-switch[hidden] { display: none; }
+.cal-chip {
+  font-size: 12px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); text-decoration: none;
+}
+a.cal-chip:hover { color: var(--text); border-color: var(--muted); }
+.cal-chip.now {
+  color: var(--text); border-color: var(--muted);
+  background: var(--panel-2); font-weight: 600;
+}
+
 .public-head { padding: 14px 2px 22px; }
 .public-title {
   margin: 0; font-size: 24px; letter-spacing: -.02em;
