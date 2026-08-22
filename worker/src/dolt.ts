@@ -8,11 +8,11 @@
 import type { Check, Habit, Meta, State } from "./model";
 import { emptyMeta, sqlEscape } from "./model";
 
+// Everything speaks v1alpha1 — reads, writes, and the token check. The v2
+// API is deliberately unused: its /user endpoint rejected a freshly issued
+// dhat.v1 token with "no token found" while v1alpha1 accepted the same token
+// (observed 2026-08-22), and its SQL endpoints 404 on many repositories.
 const API = "https://www.dolthub.com/api/v1alpha1";
-// v2 is used only where v1alpha1 has no documented equivalent (token check).
-// The SQL read/write paths stay on v1alpha1: the DB-prepare flow leans on its
-// verified-but-undocumented write behaviour, and v1alpha1 is not deprecated.
-const API_V2 = "https://www.dolthub.com/api/v2";
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 25_000;
 
@@ -224,38 +224,50 @@ export type TokenCheck =
   | { state: "unknown"; detail: string };
 
 /**
- * Asks DoltHub whether the token identifies anyone, via the documented v2
- * /user endpoint (v1alpha1 has no documented equivalent). Any 2xx counts as
- * valid — the body is not parsed, so a shape change cannot fail a good token.
+ * Asks DoltHub whether the token is recognized, via the v1alpha1 read
+ * endpoint — the same one the app reads with. The v2 /user endpoint cannot be
+ * the judge: it rejected a freshly issued, working dhat.v1 token with "no
+ * token found" (observed 2026-08-22).
+ *
+ * v1alpha1 checks the auth header before the repository (verified 2026-08-22:
+ * a bad token against a nonexistent repo still answers with the token error,
+ * in both spellings), so any well-formed owner/name works as `db` and the
+ * DB's own problems — missing repo, missing branch — never read as token
+ * problems. They mean the token got past auth, which is the answer.
  */
-export async function verifyToken(token: string): Promise<TokenCheck> {
+export async function verifyToken(token: string, db: string): Promise<TokenCheck> {
+  const [owner, name] = db.split("/");
+  const url =
+    `${API}/${encodeURIComponent(owner ?? "token")}/${encodeURIComponent(name ?? "check")}` +
+    `/main?q=${encodeURIComponent("SELECT 1")}`;
+
   let res: Response;
+  let text: string;
   try {
-    res = await fetch(`${API_V2}/user`, {
-      headers: { authorization: `Bearer ${token}` },
-    });
+    res = await fetch(url, { headers: { authorization: `token ${token}` } });
+    text = await res.text();
   } catch (err) {
     return {
       state: "unknown",
       detail: err instanceof Error ? err.message : String(err),
     };
   }
+
   if (res.ok) return { state: "valid" };
-
-  // Errors follow RFC 9457: the human-readable part sits in `detail`.
-  const text = await res.text().catch(() => "");
-  let detail = "";
-  try {
-    detail = String((JSON.parse(text) as { detail?: unknown }).detail ?? "");
-  } catch {
-    // Not JSON; fall through to the raw text.
+  if (isTokenRejected(new Error(text))) {
+    let detail = "";
+    try {
+      detail = String((JSON.parse(text) as { query_execution_message?: unknown }).query_execution_message ?? "");
+    } catch {
+      // Not JSON; fall through to the raw text.
+    }
+    return { state: "invalid", detail: detail || text.slice(0, 200) };
   }
-  detail = detail || text.slice(0, 200);
-
-  if (res.status === 401 || res.status === 403) {
-    return { state: "invalid", detail };
+  if (res.status >= 500) {
+    return { state: "unknown", detail: `DoltHub ${res.status}: ${text.slice(0, 200)}` };
   }
-  return { state: "unknown", detail: `DoltHub ${res.status}: ${detail}` };
+  // Any other 4xx is about the repo or branch, not the auth — token passed.
+  return { state: "valid" };
 }
 
 /**

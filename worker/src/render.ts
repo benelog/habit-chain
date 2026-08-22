@@ -784,7 +784,7 @@ window.habitChain = {
       let verdict;
       try {
         const res = await fetch("/api/token/check", {
-          headers: { "X-Dolt-Token": token },
+          headers: { "X-Dolt-Token": token, "X-Dolt-DB": db },
           cache: "no-store",
         });
         verdict = await res.json();

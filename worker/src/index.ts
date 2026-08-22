@@ -420,7 +420,9 @@ async function handleTokenCheck(ctx: Ctx): Promise<Response> {
     );
   }
 
-  const check = await dolt.verifyToken(ctx.token);
+  // The DB rides along from the save form when it has one; the check works
+  // against any well-formed name, so a placeholder covers the rest.
+  const check = await dolt.verifyToken(ctx.token, isDbName(ctx.db) ? ctx.db : "token/check");
   if (check.state === "valid") {
     return json({ state: "valid" });
   }
