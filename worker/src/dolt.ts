@@ -6,7 +6,7 @@
  */
 
 import type { Check, Habit, Meta, State } from "./model";
-import { emptyMeta, sqlEscape } from "./model";
+import { emptyMeta, errorMessage, sqlEscape } from "./model";
 
 // Everything speaks v1alpha1 — reads, writes, and the token check. The v2
 // API is deliberately unused: its /user endpoint rejected a freshly issued
@@ -16,30 +16,8 @@ const API = "https://www.dolthub.com/api/v1alpha1";
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 25_000;
 
-/** Schema for a fresh DoltHub DB. */
-export const SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS habits (
-  id VARCHAR(36) NOT NULL PRIMARY KEY,
-  name VARCHAR(200) NOT NULL,
-  description VARCHAR(2000) NOT NULL DEFAULT '',
-  color VARCHAR(16) NOT NULL DEFAULT '#f97316',
-  created_at VARCHAR(32) NOT NULL,
-  archived BOOLEAN NOT NULL DEFAULT false
-);
-
-CREATE TABLE IF NOT EXISTS checks (
-  habit_id VARCHAR(36) NOT NULL,
-  check_date DATE NOT NULL,
-  note VARCHAR(500) NOT NULL DEFAULT '',
-  PRIMARY KEY (habit_id, check_date)
-);
-
-CREATE TABLE IF NOT EXISTS meta (
-  k VARCHAR(64) NOT NULL PRIMARY KEY,
-  v VARCHAR(2000) NOT NULL DEFAULT ''
-);`;
-
 /** What the DB looks like right now. Reads only — no token needed. */
-export interface Shape {
+export interface SchemaShape {
   /** A DoltHub DB with zero commits has no main branch at all. */
   branch: boolean;
   habits: boolean;
@@ -57,6 +35,24 @@ interface QueryResponse {
 const str = (v: unknown): string => (v == null ? "" : String(v));
 
 /**
+ * One request, one JSON body. Every DoltHub call — read, write, poll — reports
+ * failure the same two ways: a non-2xx status, or a body that is not JSON at
+ * all (an HTML error page).
+ */
+async function doltJSON(url: string, init: RequestInit): Promise<any> {
+  const res = await fetch(url, init);
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`DoltHub ${res.status}: ${text.slice(0, 200)}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`DoltHub 응답을 해석하지 못했습니다: ${text.slice(0, 200)}`);
+  }
+}
+
+/**
  * Runs a read query. db is "owner/name". The token rides along when present so
  * private DBs are readable; DoltHub rejects a bad token even on public reads,
  * so a stale token surfaces here rather than at the first write.
@@ -71,20 +67,9 @@ async function query(db: string, branch: string, token: string, q: string): Prom
     `${API}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}` +
     `/${encodeURIComponent(branch || "main")}?q=${encodeURIComponent(q)}`;
 
-  const res = await fetch(url, {
+  const body = (await doltJSON(url, {
     headers: token === "" ? {} : { authorization: `token ${token}` },
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`DoltHub ${res.status}: ${text.slice(0, 200)}`);
-  }
-
-  let body: QueryResponse;
-  try {
-    body = JSON.parse(text) as QueryResponse;
-  } catch {
-    throw new Error(`DoltHub 응답을 해석하지 못했습니다: ${text.slice(0, 200)}`);
-  }
+  })) as QueryResponse;
   if (body.query_execution_status && body.query_execution_status !== "Success") {
     throw new Error(body.query_execution_message || body.query_execution_status);
   }
@@ -92,7 +77,7 @@ async function query(db: string, branch: string, token: string, q: string): Prom
 }
 
 /** Reads habits, checks and meta. Queried in parallel — each takes ~0.9s. */
-export async function pull(db: string, branch: string, token: string): Promise<State> {
+export async function readState(db: string, branch: string, token: string): Promise<State> {
   const [habitRes, checkRes, metaRes] = await Promise.all([
     query(db, branch, token, "SELECT id, name, description, color, created_at, archived FROM habits ORDER BY created_at"),
     query(db, branch, token, "SELECT habit_id, check_date, note FROM checks ORDER BY check_date"),
@@ -154,7 +139,7 @@ export async function readMeta(db: string, branch: string): Promise<Meta> {
  * SHOW TABLES keys its rows `Tables_in_<db>`, which differs per DB, so take the
  * value rather than look up a key. SHOW COLUMNS throws when the table is absent.
  */
-export async function inspect(db: string, branch: string, token: string): Promise<Shape> {
+export async function inspect(db: string, branch: string, token: string): Promise<SchemaShape> {
   let res: QueryResponse;
   try {
     res = await query(db, branch, token, "SHOW TABLES");
@@ -169,7 +154,7 @@ export async function inspect(db: string, branch: string, token: string): Promis
     (res.rows ?? []).map((r) => str(Object.values(r)[0]).toLowerCase()),
   );
 
-  const shape: Shape = {
+  const shape: SchemaShape = {
     branch: true,
     habits: tables.has("habits"),
     checks: tables.has("checks"),
@@ -190,8 +175,15 @@ export async function inspect(db: string, branch: string, token: string): Promis
  * this state apart. A miss just falls through to the error screen.
  */
 export function isBranchMissing(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /branch not found/i.test(msg);
+  return /branch not found/i.test(errorMessage(err));
+}
+
+/**
+ * "table not found: meta" — how Dolt reports a query against a table that a
+ * later migration adds. Same message-matching caveat as isBranchMissing.
+ */
+export function isTableMissing(err: unknown): boolean {
+  return /table not found/i.test(errorMessage(err));
 }
 
 /**
@@ -200,18 +192,8 @@ export function isBranchMissing(err: unknown): boolean {
  * v1alpha1 read endpoint. Same caveat as isBranchMissing: message matching is
  * brittle, and a miss just shows the raw error instead of the friendly one.
  */
-/**
- * "table not found: meta" — how Dolt reports a query against a table that a
- * later migration adds. Same message-matching caveat as isBranchMissing.
- */
-export function isTableMissing(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /table not found/i.test(msg);
-}
-
 export function isTokenRejected(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return /invalid authorization header|no token found for given api token/i.test(msg);
+  return /invalid authorization header|no token found for given api token/i.test(errorMessage(err));
 }
 
 /**
@@ -247,10 +229,7 @@ export async function verifyToken(token: string, db: string): Promise<TokenCheck
     res = await fetch(url, { headers: { authorization: `token ${token}` } });
     text = await res.text();
   } catch (err) {
-    return {
-      state: "unknown",
-      detail: err instanceof Error ? err.message : String(err),
-    };
+    return { state: "unknown", detail: errorMessage(err) };
   }
 
   if (res.ok) return { state: "valid" };
@@ -288,7 +267,7 @@ export interface Migration {
   /** One statement — the write endpoint takes one per request. */
   statement: string;
   /** Whether the inspected schema already holds this migration's result. */
-  applied: (shape: Shape) => boolean;
+  applied: (shape: SchemaShape) => boolean;
 }
 
 /**
@@ -296,7 +275,7 @@ export interface Migration {
  * exists, so idempotence comes from inspecting again right before running,
  * never from client-reported state.
  */
-export function migrations(shape: Shape): string[] {
+export function migrations(shape: SchemaShape): string[] {
   return MIGRATIONS.filter((m) => !m.applied(shape)).map((m) => m.statement);
 }
 
@@ -338,18 +317,14 @@ export const MIGRATIONS: Migration[] = [
   { id: 4, name: "create-meta", statement: CREATE_META, applied: (s) => s.meta },
 ];
 
-async function doltFetch(url: string, token: string, method: "GET" | "POST"): Promise<any> {
-  const res = await fetch(url, { method, headers: { authorization: `token ${token}` } });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`DoltHub ${res.status}: ${text.slice(0, 200)}`);
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`DoltHub 응답을 해석하지 못했습니다: ${text.slice(0, 200)}`);
-  }
-}
+/**
+ * Schema for a fresh DoltHub DB, served at /schema.sql for hand-application.
+ * Built from the CREATE_* snapshots so it cannot drift from what the
+ * migrations actually run — only the IF NOT EXISTS guard differs.
+ */
+export const SCHEMA_SQL = [CREATE_HABITS, CREATE_CHECKS, CREATE_META]
+  .map((s) => s.replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS"))
+  .join("\n\n");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -369,7 +344,11 @@ async function runStatement(
   const b = encodeURIComponent(branch || "main");
   const base = `${API}/${encodeURIComponent(owner!)}/${encodeURIComponent(name!)}`;
 
-  const start = await doltFetch(`${base}/write/${b}/${b}?q=${encodeURIComponent(stmt)}`, token, "POST");
+  const auth = { authorization: `token ${token}` };
+  const start = await doltJSON(`${base}/write/${b}/${b}?q=${encodeURIComponent(stmt)}`, {
+    method: "POST",
+    headers: auth,
+  });
   const op = start.operation_name;
   if (!op) {
     throw new Error(start.query_execution_message || JSON.stringify(start).slice(0, 200));
@@ -377,7 +356,10 @@ async function runStatement(
 
   const deadline = Date.now() + POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const res = await doltFetch(`${base}/write?operationName=${encodeURIComponent(op)}`, token, "GET");
+    const res = await doltJSON(`${base}/write?operationName=${encodeURIComponent(op)}`, {
+      method: "GET",
+      headers: auth,
+    });
     if (res.done) {
       const details = res.res_details ?? {};
       const status = details.query_execution_status;

@@ -16,7 +16,7 @@
  */
 
 import * as dolt from "./dolt";
-import { compute, datesOf, isDateStr, isDbName, isToken } from "./model";
+import { computeStats, datesOf, errorMessage, isDateStr, isDbName, isToken } from "./model";
 import type { Habit, Meta, State } from "./model";
 import {
   renderCalHead,
@@ -126,7 +126,7 @@ export default {
       // A rejected token reads as raw JSON otherwise; point at the fix.
       const msg = dolt.isTokenRejected(err)
         ? "DoltHub가 저장된 토큰을 거부했습니다. 설정에서 토큰을 다시 넣어 주세요."
-        : message(err);
+        : errorMessage(err);
       // A failed list leaves nothing to show, so the error takes the screen.
       // A failed write is different: what is on screen is still valid.
       return isList
@@ -153,11 +153,11 @@ async function handleList(request: Request, ctx: Ctx, cal = false): Promise<Resp
     return new Response(renderError(problem), { status: 400, headers: HTML });
   }
 
-  // pull first, so a healthy DB never pays for an extra round trip. The schema
+  // Read first, so a healthy DB never pays for an extra round trip. The schema
   // is only inspected once that has failed.
   let state: State;
   try {
-    state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
+    state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
   } catch (err) {
     const shape = await dolt.inspect(ctx.db, ctx.branch, ctx.token);
     if (!shape.branch || dolt.migrations(shape).length > 0) {
@@ -181,7 +181,7 @@ async function handlePublicList(request: Request, db: string, branch: string): P
   const retry = `/@${db}/habits`;
   let state: State;
   try {
-    state = await dolt.pull(db, branch, "");
+    state = await dolt.readState(db, branch, "");
   } catch (err) {
     return new Response(renderError(publicProblem(err), retry), { status: 502, headers: HTML });
   }
@@ -193,7 +193,7 @@ function publicProblem(err: unknown): string {
   if (dolt.isBranchMissing(err) || dolt.isTableMissing(err)) {
     return "이 DB에는 아직 습관 기록이 없습니다.";
   }
-  const msg = message(err);
+  const msg = errorMessage(err);
   // "no such repository" is what the read API actually says (observed 2026-08);
   // the 404 spellings are kept in case other paths phrase it differently.
   return /no such repository|repository not found|DoltHub 404/i.test(msg)
@@ -230,7 +230,7 @@ async function handleMetaSave(request: Request, ctx: Ctx): Promise<Response> {
       await dolt.write(ctx.token, ctx.db, ctx.branch, [dolt.CREATE_META, dolt.upsertMeta(meta)]);
     }
   } catch (err) {
-    return answer(502, `저장하지 못했습니다: ${message(err)}`, true);
+    return answer(502, `저장하지 못했습니다: ${errorMessage(err)}`, true);
   }
 
   try {
@@ -254,7 +254,7 @@ async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
 
   const stmts = dolt.migrations(await dolt.inspect(ctx.db, ctx.branch, ctx.token));
   if (stmts.length === 0) {
-    return new Response(renderHabits(await dolt.pull(ctx.db, ctx.branch, ctx.token), todayOf(request)), {
+    return new Response(renderHabits(await dolt.readState(ctx.db, ctx.branch, ctx.token), todayOf(request)), {
       headers: HTML,
     });
   }
@@ -264,13 +264,13 @@ async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
   } catch (err) {
     // Either no branch to write to, or DDL refused. The human fix is the same.
     return toast(
-      `DB를 준비하지 못했습니다: ${message(err)} — DoltHub에서 이 DB를 열고 ` +
+      `DB를 준비하지 못했습니다: ${errorMessage(err)} — DoltHub에서 이 DB를 열고 ` +
         `SQL Query로 스키마 SQL을 한 번 실행해 커밋해 주세요. 그다음에는 앱이 이어받습니다.`,
       502,
     );
   }
 
-  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
+  const state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
   return new Response(
     renderHabits(state, todayOf(request)) + renderLive("DB를 준비했습니다."),
     { headers: HTML },
@@ -299,7 +299,7 @@ async function handleAdd(request: Request, ctx: Ctx): Promise<Response> {
   await dolt.write(ctx.token, ctx.db, ctx.branch, [dolt.upsertHabit(habit)]);
 
   const today = todayOf(request);
-  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
+  const state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
   return new Response(renderHabits(state, today) + renderLive(`${habit.name} 추가됨.`), {
     headers: HTML,
   });
@@ -327,7 +327,7 @@ async function handleToggle(
     return toast("아직 오지 않은 날은 체크할 수 없습니다.", 400);
   }
 
-  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
+  const state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
 
   // Deleted on another device. A whole list cannot go in a card slot, so
   // retarget to the list and redraw.
@@ -374,7 +374,7 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
   const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : undefined;
 
   const today = todayOf(request);
-  let state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
+  let state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
 
   // Deleted elsewhere; answering in the card slot would leave a ghost card.
   if (!state.habits.some((h) => h.id === habitID)) {
@@ -387,7 +387,7 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
     dolt.updateHabit(habitID, name.slice(0, 60), description, color),
   ]);
 
-  state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
+  state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
   const body =
     renderOneCard(state, habitID, today) +
     renderDay(state, today, true) +
@@ -401,7 +401,7 @@ async function handleDelete(request: Request, ctx: Ctx, habitID: string): Promis
 
   await dolt.write(ctx.token, ctx.db, ctx.branch, dolt.deleteHabit(habitID));
 
-  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
+  const state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
   return new Response(renderHabits(state, todayOf(request)) + renderLive("습관을 삭제했습니다."), {
     headers: HTML,
   });
@@ -449,7 +449,7 @@ async function handleExport(url: URL, ctx: Ctx): Promise<Response> {
     return json({ error: problem }, 400);
   }
 
-  const state = await dolt.pull(target.db, target.branch, target.token);
+  const state = await dolt.readState(target.db, target.branch, target.token);
   const day = new Date().toISOString().slice(0, 10);
   return new Response(JSON.stringify(state, null, 2), {
     headers: {
@@ -494,7 +494,7 @@ async function cachedMeta(db: string, branch: string): Promise<Meta> {
 /** One line for screen readers; on screen colour and shape say this. */
 function announce(state: State, habitID: string, date: string, wasOn: boolean, today: string): string {
   const name = state.habits.find((h) => h.id === habitID)?.name ?? "습관";
-  const days = compute(datesOf(state, habitID), today).current;
+  const days = computeStats(datesOf(state, habitID), today).current;
   return `${name} ${date} ${wasOn ? "체크 해제" : "체크"}. 현재 ${days}일째.`;
 }
 
@@ -559,10 +559,6 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
-}
-
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /**

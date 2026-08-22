@@ -105,7 +105,7 @@ export function isToken(s: unknown): s is string {
  * The chain survives an unchecked today as long as yesterday is filled; only a
  * whole missed day breaks it. That is the don't-break-the-chain rule.
  */
-export function compute(dates: DateStr[], today: DateStr): Stats {
+export function computeStats(dates: DateStr[], today: DateStr): Stats {
   if (dates.length === 0) {
     return { current: 0, longest: 0, total: 0, rate30: 0 };
   }
@@ -149,6 +149,13 @@ export function datesOf(state: State, habitID: string): DateStr[] {
 /** Set for (habit_id, date) lookups. */
 export function checkSet(state: State): Set<string> {
   return new Set(state.checks.map((c) => `${c.habit_id}|${c.date}`));
+}
+
+// ── Errors ────────────────────────────────────────────
+
+/** Readable text out of a caught value — `catch` hands over `unknown`. */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 // ── SQL ───────────────────────────────────────────────

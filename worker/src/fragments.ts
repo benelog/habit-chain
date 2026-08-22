@@ -11,7 +11,7 @@
  */
 
 import type { DateStr, Habit, Meta, State, Stats } from "./model";
-import { addDays, checkSet, compute, datesOf, dayOfWeek } from "./model";
+import { addDays, checkSet, computeStats, datesOf, dayOfWeek } from "./model";
 
 /** Weeks shown in each card's chain grid. */
 const GRID_WEEKS = 5;
@@ -269,7 +269,7 @@ export function renderCalHead(meta: Meta, db: string): string {
 }
 
 function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr, readonly = false): string {
-  const stats = compute(datesOf(state, h.id), today);
+  const stats = computeStats(datesOf(state, h.id), today);
   const doneToday = idx.has(`${h.id}|${today}`);
   const color = h.color || SWATCHES[0]!;
   const id = esc(h.id);

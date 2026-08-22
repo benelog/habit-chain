@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addDays, compute, dayOfWeek, isDateStr, isDbName, isToken, sqlEscape } from "./model";
+import { addDays, computeStats, dayOfWeek, isDateStr, isDbName, isToken, sqlEscape } from "./model";
 
-describe("compute", () => {
+describe("computeStats", () => {
   const cases: Array<{
     name: string;
     dates: string[];
@@ -80,7 +80,7 @@ describe("compute", () => {
 
   for (const tc of cases) {
     it(tc.name, () => {
-      const got = compute(tc.dates, tc.today);
+      const got = computeStats(tc.dates, tc.today);
       expect(got.current).toBe(tc.current);
       expect(got.longest).toBe(tc.longest);
       expect(got.total).toBe(tc.total);
@@ -90,7 +90,7 @@ describe("compute", () => {
   it("최근 30일 달성률", () => {
     const base = "2026-08-21";
     const dates = Array.from({ length: 15 }, (_, i) => addDays(base, -i));
-    expect(compute(dates, base).rate30).toBe(50);
+    expect(computeStats(dates, base).rate30).toBe(50);
   });
 });
 
