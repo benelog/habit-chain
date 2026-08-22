@@ -99,6 +99,11 @@ export function isToken(s: unknown): s is string {
   return typeof s === "string" && /^[\x21-\x7e]{8,256}$/.test(s);
 }
 
+/** A colour lands in a style attribute; #rrggbb only. */
+export function isHexColor(s: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(s);
+}
+
 // ── Chain math ────────────────────────────────────────
 
 /**

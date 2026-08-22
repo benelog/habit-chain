@@ -16,9 +16,18 @@
  */
 
 import * as dolt from "./dolt";
-import { computeStats, datesOf, errorMessage, isDateStr, isDbName, isToken } from "./model";
+import {
+  computeStats,
+  datesOf,
+  errorMessage,
+  isDateStr,
+  isDbName,
+  isHexColor,
+  isToken,
+} from "./model";
 import type { Habit, Meta, State } from "./model";
 import {
+  SWATCHES,
   renderCalHead,
   renderDay,
   renderError,
@@ -271,10 +280,7 @@ async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
   }
 
   const state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
-  return new Response(
-    renderHabits(state, todayOf(request)) + renderLive("DB를 준비했습니다."),
-    { headers: HTML },
-  );
+  return listResponse(state, todayOf(request), "DB를 준비했습니다.");
 }
 
 async function handleAdd(request: Request, ctx: Ctx): Promise<Response> {
@@ -300,9 +306,7 @@ async function handleAdd(request: Request, ctx: Ctx): Promise<Response> {
 
   const today = todayOf(request);
   const state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
-  return new Response(renderHabits(state, today) + renderLive(`${habit.name} 추가됨.`), {
-    headers: HTML,
-  });
+  return listResponse(state, today, `${habit.name} 추가됨.`);
 }
 
 /**
@@ -332,9 +336,7 @@ async function handleToggle(
   // Deleted on another device. A whole list cannot go in a card slot, so
   // retarget to the list and redraw.
   if (!state.habits.some((h) => h.id === habitID)) {
-    return new Response(renderHabits(state, today), {
-      headers: { ...HTML, "HX-Retarget": "#habits", "HX-Reswap": "innerHTML" },
-    });
+    return retargetToList(state, today);
   }
 
   const on = state.checks.some((c) => c.habit_id === habitID && c.date === date);
@@ -346,12 +348,7 @@ async function handleToggle(
     ? state.checks.filter((c) => !(c.habit_id === habitID && c.date === date))
     : [...state.checks, { habit_id: habitID, date, note: "" }];
 
-  const body =
-    renderOneCard(state, habitID, today) +
-    renderDay(state, today, true) +
-    renderLive(announce(state, habitID, date, on, today));
-
-  return new Response(body, { headers: HTML });
+  return cardResponse(state, habitID, today, announce(state, habitID, date, on, today));
 }
 
 /**
@@ -371,16 +368,14 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
   const description = normalizeDesc(String(form.get("description") ?? ""));
   // Absent or malformed means "leave the colour alone", never "default it".
   const colorRaw = String(form.get("color") ?? "");
-  const color = /^#[0-9a-fA-F]{6}$/.test(colorRaw) ? colorRaw : undefined;
+  const color = isHexColor(colorRaw) ? colorRaw : undefined;
 
   const today = todayOf(request);
   let state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
 
   // Deleted elsewhere; answering in the card slot would leave a ghost card.
   if (!state.habits.some((h) => h.id === habitID)) {
-    return new Response(renderHabits(state, today), {
-      headers: { ...HTML, "HX-Retarget": "#habits", "HX-Reswap": "innerHTML" },
-    });
+    return retargetToList(state, today);
   }
 
   await dolt.write(ctx.token, ctx.db, ctx.branch, [
@@ -388,11 +383,7 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
   ]);
 
   state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
-  const body =
-    renderOneCard(state, habitID, today) +
-    renderDay(state, today, true) +
-    renderLive(`${name} 수정됨.`);
-  return new Response(body, { headers: HTML });
+  return cardResponse(state, habitID, today, `${name} 수정됨.`);
 }
 
 async function handleDelete(request: Request, ctx: Ctx, habitID: string): Promise<Response> {
@@ -402,9 +393,7 @@ async function handleDelete(request: Request, ctx: Ctx, habitID: string): Promis
   await dolt.write(ctx.token, ctx.db, ctx.branch, dolt.deleteHabit(habitID));
 
   const state = await dolt.readState(ctx.db, ctx.branch, ctx.token);
-  return new Response(renderHabits(state, todayOf(request)) + renderLive("습관을 삭제했습니다."), {
-    headers: HTML,
-  });
+  return listResponse(state, todayOf(request), "습관을 삭제했습니다.");
 }
 
 /**
@@ -543,6 +532,26 @@ function requireWrite(ctx: Ctx): Response | null {
   return null;
 }
 
+/** The whole list, plus one line for screen readers. */
+function listResponse(state: State, today: string, note: string): Response {
+  return new Response(renderHabits(state, today) + renderLive(note), { headers: HTML });
+}
+
+/** One card, the day summary out-of-band, one announcement. */
+function cardResponse(state: State, habitID: string, today: string, note: string): Response {
+  return new Response(
+    renderOneCard(state, habitID, today) + renderDay(state, today, true) + renderLive(note),
+    { headers: HTML },
+  );
+}
+
+/** The habit is gone: send the whole list to the list slot instead of the card. */
+function retargetToList(state: State, today: string): Response {
+  return new Response(renderHabits(state, today), {
+    headers: { ...HTML, "HX-Retarget": "#habits", "HX-Reswap": "innerHTML" },
+  });
+}
+
 /**
  * Reports a failed write. HX-Retarget sends it to #toast — otherwise the error
  * lands in the card or list slot and wipes the records shown there.
@@ -570,7 +579,7 @@ function normalizeDesc(s: string): string {
   return s.replace(/\r\n/g, "\n").trim().slice(0, 2000);
 }
 
-/** The colour goes into a style attribute; #rrggbb only. */
+/** Anything but #rrggbb falls back to the first swatch. */
 function normalizeColor(c: string): string {
-  return /^#[0-9a-fA-F]{6}$/.test(c) ? c : "#e2542f";
+  return isHexColor(c) ? c : SWATCHES[0]!;
 }
