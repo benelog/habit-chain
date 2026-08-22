@@ -101,7 +101,7 @@ export default {
         return await handleAdd(request, ctx);
       }
       if (path === "/meta" && request.method === "PUT") {
-        return await handleMetaSave(request, ctx, url.origin);
+        return await handleMetaSave(request, ctx);
       }
       if (path === "/schema" && request.method === "POST") {
         return await handlePrepare(request, ctx);
@@ -165,15 +165,13 @@ async function handleList(request: Request, ctx: Ctx, cal = false): Promise<Resp
     }
     throw err;
   }
-  // The meta form rides out-of-band into the settings dialog, so its fields
-  // hold what the DB holds. On a calendar page the header rides too: the
-  // shell read meta without a token, which a private DB refuses — this load,
-  // made with the owner's token, carries the real title.
-  const origin = new URL(request.url).origin;
+  // On a calendar page two out-of-band pieces ride along: the meta form in
+  // settings (so its fields hold what the DB holds) and the page header —
+  // the shell read meta without a token, which a private DB refuses; this
+  // load, made with the owner's token, carries the real title.
   return new Response(
     renderHabits(state, todayOf(request)) +
-      renderMetaForm(state.meta, ctx.db, origin, true) +
-      (cal ? renderCalHead(state.meta, ctx.db) : ""),
+      (cal ? renderMetaForm(state.meta, true) + renderCalHead(state.meta, ctx.db) : ""),
     { headers: HTML },
   );
 }
@@ -208,7 +206,7 @@ function publicProblem(err: unknown): string {
  * answer — success or failure — is the form itself: this form lives in the
  * modal settings dialog, where a toast would sit invisible behind the backdrop.
  */
-async function handleMetaSave(request: Request, ctx: Ctx, origin: string): Promise<Response> {
+async function handleMetaSave(request: Request, ctx: Ctx): Promise<Response> {
   const form = await request.formData();
   const meta: Meta = {
     // The title lands in an og:title and a heading; one line only.
@@ -216,7 +214,7 @@ async function handleMetaSave(request: Request, ctx: Ctx, origin: string): Promi
     description: normalizeDesc(String(form.get("description") ?? "")),
   };
   const answer = (status: number, note: string, bad: boolean) =>
-    new Response(renderMetaForm(meta, ctx.db, origin, false, note, bad), { status, headers: HTML });
+    new Response(renderMetaForm(meta, false, note, bad), { status, headers: HTML });
 
   const problem = dbProblem(ctx);
   if (problem) return answer(400, problem, true);

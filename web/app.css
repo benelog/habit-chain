@@ -216,6 +216,23 @@ body.viewer .add-form { display: none; }
 .profile-row .profile-open small { color: var(--muted); font-size: 11px; flex: none; }
 .profile-row button { flex: none; }
 
+/* 하나의 폼이 추가와 수정을 겸한다. 접혀 있다가 필요할 때만 펴진다. */
+.profile-form {
+  margin-top: 12px; padding: 12px 13px;
+  border: 1px solid var(--line); border-radius: 12px;
+}
+.profile-form[hidden] { display: none; }
+.profile-form-title { margin: 0 0 10px; font-size: 12.5px; font-weight: 650; }
+
+/* 공유 주소 한 줄과 복사 버튼 */
+.share-row { display: flex; align-items: center; gap: 8px; }
+#share-url {
+  flex: 1; min-width: 0; overflow-wrap: anywhere;
+  font-size: 12px; background: var(--panel-2); border-radius: 7px;
+  padding: 7px 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.share-row button { flex: none; }
+
 /* ── Habit cards ──────────────────────────────────── */
 .habits { display: grid; gap: 12px; }
 

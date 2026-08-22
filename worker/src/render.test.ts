@@ -99,6 +99,24 @@ describe("shell · 달력 페이지(/@owner/name)", () => {
     expect(html).toContain('id="cal-title"');
     expect(html).toContain('id="cal-desc"');
   });
+
+  it("제목·설명과 공유 주소는 달력 페이지의 설정에만 있다", () => {
+    const cal = shell({ db: "a/b", meta: { title: "", description: "" }, origin: "https://x.test" });
+    expect(cal).toContain('id="meta-form"');
+    expect(cal).toContain('id="share-url"');
+    expect(cal).toContain("https://x.test/@a/b");
+    // 홈 설정은 달력 목록 관리만 한다. 제목은 특정 달력의 것이라 여기 없다.
+    const home = shell();
+    expect(home).not.toContain('id="meta-form"');
+    expect(home).not.toContain('id="share-url"');
+  });
+
+  it("달력 폼은 접혀 있고, 추가와 수정을 겸한다", () => {
+    const html = shell();
+    expect(html).toContain('id="profile-form" class="profile-form" hidden');
+    expect(html).toContain("habitChain.openForm()");
+    expect(html).toContain("habitChain.closeForm()");
+  });
 });
 
 describe("renderCalHead", () => {
@@ -221,16 +239,10 @@ describe("renderHabits · 공개(읽기 전용)", () => {
 });
 
 describe("renderMetaForm", () => {
-  it("공유 주소를 보여주고, 저장은 /meta로 간다", () => {
-    const html = renderMetaForm(
-      { title: "정상혁의 습관 달력", description: "" },
-      "benelog/habit-chain",
-      "https://chain.benelog.net",
-      true,
-    );
+  it("DB의 값을 담고, 저장은 /meta로 간다", () => {
+    const html = renderMetaForm({ title: "정상혁의 습관 달력", description: "" }, true);
     expect(html).toContain('hx-put="/meta"');
     expect(html).toContain('hx-swap-oob="true"');
-    expect(html).toContain("https://chain.benelog.net/@benelog/habit-chain");
     expect(html).toContain('value="정상혁의 습관 달력"');
   });
 });

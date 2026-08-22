@@ -228,14 +228,7 @@ export function renderToast(msg: string): string {
  * behind the modal's backdrop. Sent out-of-band with the list so the fields
  * hold what the DB holds, not what the shell guessed.
  */
-export function renderMetaForm(
-  meta: Meta,
-  db: string,
-  origin: string,
-  oob: boolean,
-  status = "",
-  bad = false,
-): string {
+export function renderMetaForm(meta: Meta, oob: boolean, status = "", bad = false): string {
   return `<form id="meta-form"${oob ? ` hx-swap-oob="true"` : ""} hx-put="/meta" hx-swap="outerHTML"
     hx-on::after-request="habitChain.afterMetaSave(event)">
     <label for="meta-title">제목
@@ -249,8 +242,6 @@ export function renderMetaForm(
     <div class="row">
       <button type="submit" class="primary">저장</button>
     </div>
-    <p class="hint">이 달력의 주소가 곧 공유 주소입니다: <code>${esc(origin)}/@${esc(db)}</code>
-      — 공개 DB라면 누구나 열어볼 수 있고, 기록은 토큰을 가진 브라우저에서만 됩니다.</p>
     <p class="set-status${bad ? " bad" : ""}" role="status">${esc(status)}</p>
   </form>`;
 }
@@ -602,43 +593,65 @@ ${calFoot}
         <legend>내 달력</legend>
         <p class="hint">
           이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.
-          DB를 여러 개 저장해 두고 골라 쓸 수 있습니다 — 공개용과 비공개용을 나누고 싶다면 달력을 두 개 만드세요.
-          <b>DB 이름이 있어야 사슬을 읽고</b>, 토큰까지 있어야 기록됩니다. 비공개 DB는 읽을 때도 토큰이 필요합니다.
-          토큰은 저장 버튼을 누를 때 DoltHub에 물어 바로 확인합니다.
+          달력(DB)을 여러 개 저장해 두고 골라 쓸 수 있습니다 — 공개용과 비공개용을 나누고 싶다면 두 개를 저장하세요.
           처음이라면 <a href="/help">시작 안내</a>를 따라오세요.
         </p>
         <div id="profile-list" class="profile-list"></div>
-        <label for="set-db">DB 이름
-          <input id="set-db" type="text" placeholder="owner/name" spellcheck="false" autofocus
-            autocapitalize="none" autocorrect="off" autocomplete="off"
-            onkeydown="habitChain.enterSaves(event)">
-        </label>
-        <label for="set-token">토큰
-          <input id="set-token" type="password" placeholder="DoltHub → Settings → Tokens" spellcheck="false"
-            autocapitalize="none" autocorrect="off" autocomplete="new-password"
-            onkeydown="habitChain.enterSaves(event)">
-        </label>
-        <p class="hint">
-          토큰은 서버가 아닌 이 브라우저에만 저장됩니다.
-          <b>공용 컴퓨터에서는 토큰을 입력했다면 사용을 끝낸 후에 목록에서 지워 주세요.</b>
-        </p>
         <div class="row">
-          <button type="button" class="primary" onclick="habitChain.save()">저장</button>
+          <button type="button" class="ghost" id="profile-add"
+            onclick="habitChain.openForm()">＋ 달력 추가</button>
         </div>
-        <p id="set-status" class="set-status" role="status"></p>
+        <div id="profile-form" class="profile-form" hidden>
+          <p class="profile-form-title" id="profile-form-title">새 달력</p>
+          <label for="set-db">DB 이름
+            <input id="set-db" type="text" placeholder="owner/name" spellcheck="false"
+              autocapitalize="none" autocorrect="off" autocomplete="off"
+              onkeydown="habitChain.enterSaves(event)">
+          </label>
+          <label for="set-token">토큰
+            <input id="set-token" type="password" placeholder="DoltHub → Settings → Tokens (읽기만 하면 비워 두세요)"
+              spellcheck="false" autocapitalize="none" autocorrect="off" autocomplete="new-password"
+              onkeydown="habitChain.enterSaves(event)">
+          </label>
+          <p class="hint">
+            토큰이 있어야 기록되고, 비공개 DB는 읽을 때도 필요합니다. 저장을 누를 때 DoltHub에 물어
+            바로 확인합니다. 토큰은 서버가 아닌 이 브라우저에만 저장됩니다.
+            <b>공용 컴퓨터에서는 쓰고 난 뒤 목록에서 지워 주세요.</b>
+          </p>
+          <div class="row">
+            <button type="button" class="primary" onclick="habitChain.save()">저장</button>
+            <button type="button" class="ghost" onclick="habitChain.closeForm()">닫기</button>
+          </div>
+          <p id="set-status" class="set-status" role="status"></p>
+        </div>
       </fieldset>
-
+${
+  isCal
+    ? `
       <fieldset>
-        <legend>공개 페이지</legend>
+        <legend>달력 제목과 설명</legend>
         <p class="hint">
-          공개 DB라면 이 달력의 주소를 그대로 다른 사람에게 보낼 수 있습니다.
-          제목과 설명은 DB에 저장되어 페이지 상단과 링크 미리보기에 함께 보입니다.
+          달력 상단에 보이는 제목과 설명입니다. DB에 저장되므로 어느 브라우저로 열어도 함께 보입니다.
         </p>
         <form id="meta-form">
-          <p class="hint">달력을 열면 제목과 설명을 적을 수 있습니다.</p>
+          <p class="hint">달력을 읽어 온 뒤에 적을 수 있습니다. 기록은 달력 주인만 됩니다.</p>
         </form>
       </fieldset>
 
+      <fieldset>
+        <legend>공유</legend>
+        <p class="hint">
+          공개 DB라면 누구나 이 주소로 달력을 볼 수 있습니다. 제목과 설명은 링크 미리보기에도 함께 실립니다.
+          기록은 토큰을 가진 브라우저에서만 됩니다.
+        </p>
+        <div class="share-row">
+          <code id="share-url">${esc(origin)}/@${esc(db)}</code>
+          <button type="button" class="ghost" onclick="habitChain.copyShare(this)">복사</button>
+        </div>
+      </fieldset>
+`
+    : ""
+}
       <fieldset>
         <legend>데이터</legend>
         <p class="hint">
@@ -808,6 +821,7 @@ window.habitChain = {
     if (this.pathDb() === db) {
       if (token !== "") document.body.classList.remove("viewer");
       else document.body.classList.add("viewer");
+      this.closeForm();
       document.getElementById("settings").close();
       this.say("저장했습니다. 사슬을 다시 읽습니다.");
       this.reload();
@@ -825,8 +839,9 @@ window.habitChain = {
     if (list.length === 0) {
       const p = document.createElement("p");
       p.className = "hint";
-      p.textContent = "저장된 달력이 아직 없습니다.";
+      p.textContent = "저장된 달력이 아직 없습니다. 아래에서 첫 달력을 추가하세요.";
       box.appendChild(p);
+      this.openForm();
       return;
     }
     const here = this.pathDb();
@@ -842,15 +857,44 @@ window.habitChain = {
       state.textContent = prof.token === "" ? "읽기 전용" : "기록 가능";
       a.appendChild(name);
       a.appendChild(state);
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "ghost";
+      edit.textContent = "수정";
+      edit.onclick = () => this.openForm(prof.db);
       const del = document.createElement("button");
       del.type = "button";
       del.className = "ghost";
       del.textContent = "지우기";
       del.onclick = () => this.removeProfile(prof.db, del);
       row.appendChild(a);
+      row.appendChild(edit);
       row.appendChild(del);
       box.appendChild(row);
     }
+  },
+  /* 하나의 폼이 추가와 수정을 겸한다. 제목이 지금 어느 쪽인지 말해 준다. */
+  openForm(db) {
+    const mine = db ? this.profiles().find((p) => p.db === db) : null;
+    document.getElementById("set-db").value = mine ? mine.db : "";
+    document.getElementById("set-token").value = mine ? mine.token : "";
+    document.getElementById("profile-form-title").textContent = mine ? "달력 수정 — " + mine.db : "새 달력";
+    document.getElementById("profile-form").hidden = false;
+    const focus = document.getElementById(mine ? "set-token" : "set-db");
+    if (focus) focus.focus();
+  },
+  closeForm() {
+    document.getElementById("profile-form").hidden = true;
+  },
+  /* 공유 주소 복사. 결과는 버튼 위에서 바로 말한다. */
+  copyShare(btn) {
+    const code = document.getElementById("share-url");
+    if (!code || !navigator.clipboard) return;
+    navigator.clipboard.writeText(code.textContent.trim()).then(
+      () => { btn.textContent = "복사됨"; },
+      () => { btn.textContent = "복사 실패"; },
+    );
+    setTimeout(() => { btn.textContent = "복사"; }, 2000);
   },
   /* 지우기는 같은 버튼을 두 번. 모달 위에 모달을 얹지 않기 위한 최소한의 확인. */
   removeProfile(db, btn) {
@@ -1024,12 +1068,8 @@ window.habitChain = {
 })();
 
 document.addEventListener("DOMContentLoaded", () => {
-  const chain = window.habitChain;
-  const mine = chain.profiles().find((p) => p.db === chain.pathDb());
-  document.getElementById("set-db").value = mine ? mine.db : chain.pathDb();
-  document.getElementById("set-token").value = mine ? mine.token : "";
-  chain.renderProfiles();
-  chain.syncExport();
+  window.habitChain.renderProfiles();
+  window.habitChain.syncExport();
 });
 
 /* 쓰기 왕복이 1.5~2초다. 그동안 아무 표시가 없으면 눌린 건지 알 수 없다. */
