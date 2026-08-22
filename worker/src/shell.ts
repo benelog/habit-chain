@@ -209,12 +209,10 @@ ${
       <fieldset>
         <legend>데이터</legend>
         <p class="hint">
-          표는 앱이 만듭니다. 빈 DB와 토큰만 넣으면 목록 자리에 <b>DB 준비하기</b> 버튼이 뜹니다.
-          그 길이 막혔을 때를 위해 스키마 SQL도 그대로 둡니다 — DoltHub 콘솔에 붙여넣고 커밋하면 됩니다.
+          DB의 스키마는 앱이 만듭니다. 빈 DB와 토큰만 넣으면 목록 자리에 <b>DB 준비하기</b> 버튼이 뜹니다.
         </p>
         <div class="row">
           <a class="ghost" id="export-link" href="/export" download>JSON 내보내기</a>
-          <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
         </div>
       </fieldset>
 
