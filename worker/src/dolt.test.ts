@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { isBranchMissing, migrations, updateHabit, upsertHabit } from "./dolt";
+import { isBranchMissing, MIGRATIONS, migrations, updateHabit, upsertHabit } from "./dolt";
 import type { Habit } from "./model";
 
 const base: Habit = {
@@ -63,6 +63,19 @@ describe("migrations", () => {
     const out = migrations({ branch: true, habits: false, checks: true, description: false });
     expect(out).toHaveLength(1);
     expect(out[0]).toContain("CREATE TABLE habits");
+  });
+
+  it("적용 안 된 것만 목록의 순번 순서로 낸다", () => {
+    const out = migrations({ branch: true, habits: true, checks: false, description: false });
+    expect(out).toHaveLength(2);
+    expect(out[0]).toContain("CREATE TABLE checks");
+    expect(out[1]).toContain("ALTER TABLE habits");
+  });
+
+  it("순번은 겹치지 않고 늘어나기만 한다", () => {
+    const ids = MIGRATIONS.map((m) => m.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 

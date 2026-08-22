@@ -152,21 +152,33 @@ export function isBranchMissing(err: unknown): boolean {
 }
 
 /**
- * Statements that bring this shape up to the current schema — only what is
- * missing. ALTER ADD COLUMN errors if the column exists, so idempotence comes
- * from inspecting again right before running, never from client-reported state.
+ * Ordered migrations, golang-migrate style: the list only grows, and ids give
+ * the dependency order. Two departures, both forced by this setup:
+ *
+ * - No version table. The user can edit the schema on the DoltHub site, and
+ *   the write endpoint has no transactions, so a recorded version could drift
+ *   from the real schema. Each migration instead checks the inspected shape —
+ *   the real schema is the only record.
+ * - CREATE statements are snapshots of the current schema, so a fresh DB does
+ *   not replay old ALTERs. Every statement is one write, one commit, ~2s.
+ */
+export interface Migration {
+  /** Sequence number. The array stays sorted by it; ids are never reused. */
+  id: number;
+  name: string;
+  /** One statement — the write endpoint takes one per request. */
+  statement: string;
+  /** Whether the inspected schema already holds this migration's result. */
+  applied: (shape: Shape) => boolean;
+}
+
+/**
+ * Unapplied statements, in list order. ALTER ADD COLUMN errors if the column
+ * exists, so idempotence comes from inspecting again right before running,
+ * never from client-reported state.
  */
 export function migrations(shape: Shape): string[] {
-  const out: string[] = [];
-  if (!shape.habits) {
-    out.push(CREATE_HABITS);
-  } else if (!shape.description) {
-    out.push(ADD_DESCRIPTION);
-  }
-  if (!shape.checks) {
-    out.push(CREATE_CHECKS);
-  }
-  return out;
+  return MIGRATIONS.filter((m) => !m.applied(shape)).map((m) => m.statement);
 }
 
 const CREATE_HABITS = `CREATE TABLE habits (
@@ -187,6 +199,18 @@ const CREATE_CHECKS = `CREATE TABLE checks (
 
 // Dolt's parser rejects an AFTER clause, so column position is left unset.
 const ADD_DESCRIPTION = `ALTER TABLE habits ADD COLUMN description VARCHAR(2000) NOT NULL DEFAULT '';`;
+
+export const MIGRATIONS: Migration[] = [
+  { id: 1, name: "create-habits", statement: CREATE_HABITS, applied: (s) => s.habits },
+  { id: 2, name: "create-checks", statement: CREATE_CHECKS, applied: (s) => s.checks },
+  {
+    id: 3,
+    name: "habits-description",
+    statement: ADD_DESCRIPTION,
+    // Covered by create-habits on a fresh DB: the snapshot already has it.
+    applied: (s) => !s.habits || s.description,
+  },
+];
 
 async function doltFetch(url: string, token: string, method: "GET" | "POST"): Promise<any> {
   const res = await fetch(url, { method, headers: { authorization: `token ${token}` } });
