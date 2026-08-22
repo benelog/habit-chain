@@ -152,6 +152,42 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .day.all-done .day-count b { color: var(--text); }
 
+/* ── Shared page title ────────────────────────────
+   The user's own words for their calendar; shown on their page and, larger,
+   on the public page. Greyscale like the rest of the shell. */
+.page-head { padding: 2px 2px 12px; }
+.page-title { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.page-desc {
+  margin: 3px 0 0; font-size: 13px; color: var(--muted);
+  white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6;
+}
+
+/* ── Public page (/@owner/name) ───────────────────── */
+.public-head { padding: 14px 2px 22px; }
+.public-title {
+  margin: 0; font-size: 24px; letter-spacing: -.02em;
+  font-variation-settings: "wdth" 108, "wght" 700;
+  overflow-wrap: anywhere;
+}
+.public-desc {
+  margin: 7px 0 0; font-size: 14px; color: var(--muted);
+  white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65;
+  max-width: 52ch;
+}
+.public-db { margin: 9px 0 0; font-size: 12px; }
+.public-db a { color: var(--muted); text-decoration-color: var(--line); text-underline-offset: 2px; }
+.public-db a:hover { color: var(--text); }
+.public-foot {
+  margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line-soft);
+  font-size: 12.5px; color: var(--muted); text-align: center;
+}
+.public-foot p { margin: 0; }
+.public-foot a { color: var(--text); text-decoration-color: var(--muted); text-underline-offset: 2px; }
+
+/* Read-only grid: the chain shows, but nothing invites a press. */
+.grid.ro .cell { cursor: default; }
+.grid.ro .cell:hover { border-color: transparent; }
+
 /* ── Habit cards ──────────────────────────────────── */
 .habits { display: grid; gap: 12px; }
 
@@ -482,7 +518,16 @@ label input[type=password], label input[type=text] {
   padding: 9px 11px; color: var(--text); font: inherit; outline: none;
 }
 label input:focus { border-color: var(--muted); }
+label textarea {
+  display: block; width: 100%; margin-top: 5px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px;
+  padding: 9px 11px; color: var(--text); font: inherit; font-size: 13.5px;
+  outline: none; resize: vertical; line-height: 1.6;
+}
+label textarea:focus { border-color: var(--muted); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+#meta-form label { margin-top: 10px; }
+#meta-form .row { margin-top: 12px; }
 
 /* The line shown after saving. Its space is always reserved so nothing jumps. */
 .set-status {

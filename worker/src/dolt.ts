@@ -5,8 +5,8 @@
  * finishes. Both live here, so nothing depends on DoltHub's CORS behaviour.
  */
 
-import type { Check, Habit, State } from "./model";
-import { sqlEscape } from "./model";
+import type { Check, Habit, Meta, State } from "./model";
+import { emptyMeta, sqlEscape } from "./model";
 
 const API = "https://www.dolthub.com/api/v1alpha1";
 // v2 is used only where v1alpha1 has no documented equivalent (token check).
@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS checks (
   check_date DATE NOT NULL,
   note VARCHAR(500) NOT NULL DEFAULT '',
   PRIMARY KEY (habit_id, check_date)
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+  k VARCHAR(64) NOT NULL PRIMARY KEY,
+  v VARCHAR(2000) NOT NULL DEFAULT ''
 );`;
 
 /** What the DB looks like right now. Reads only — no token needed. */
@@ -40,6 +45,7 @@ export interface Shape {
   habits: boolean;
   checks: boolean;
   description: boolean;
+  meta: boolean;
 }
 
 interface QueryResponse {
@@ -85,11 +91,18 @@ async function query(db: string, branch: string, token: string, q: string): Prom
   return body;
 }
 
-/** Reads habits and checks. Queried in parallel — each takes ~0.9s. */
+/** Reads habits, checks and meta. Queried in parallel — each takes ~0.9s. */
 export async function pull(db: string, branch: string, token: string): Promise<State> {
-  const [habitRes, checkRes] = await Promise.all([
+  const [habitRes, checkRes, metaRes] = await Promise.all([
     query(db, branch, token, "SELECT id, name, description, color, created_at, archived FROM habits ORDER BY created_at"),
     query(db, branch, token, "SELECT habit_id, check_date, note FROM checks ORDER BY check_date"),
+    // The meta table arrived in a later migration. A DB without it is still
+    // fully usable, so its absence is tolerated here — failing would drag
+    // every existing DB (and every public visitor) through the prepare screen.
+    query(db, branch, token, "SELECT k, v FROM meta").catch((err) => {
+      if (isTableMissing(err)) return { rows: [] } as QueryResponse;
+      throw err;
+    }),
   ]);
 
   const habits: Habit[] = (habitRes.rows ?? [])
@@ -113,7 +126,26 @@ export async function pull(db: string, branch: string, token: string): Promise<S
     }))
     .filter((c) => c.habit_id !== "" && c.date !== "");
 
-  return { habits, checks };
+  return { habits, checks, meta: metaOf(metaRes.rows ?? []) };
+}
+
+function metaOf(rows: Array<Record<string, unknown>>): Meta {
+  const kv = new Map(rows.map((r) => [str(r["k"]), str(r["v"])]));
+  return { title: kv.get("title") ?? "", description: kv.get("description") ?? "" };
+}
+
+/**
+ * Meta alone, for the public page's <head>. Any failure — missing table,
+ * private DB, DoltHub down — yields empty meta: the shell must still render,
+ * and the list fragment surfaces the real error afterwards.
+ */
+export async function readMeta(db: string, branch: string): Promise<Meta> {
+  try {
+    const res = await query(db, branch, "", "SELECT k, v FROM meta");
+    return metaOf(res.rows ?? []);
+  } catch {
+    return emptyMeta();
+  }
 }
 
 // ── Writes ────────────────────────────────────────────
@@ -130,7 +162,7 @@ export async function inspect(db: string, branch: string, token: string): Promis
     // A brand-new DB: no commits, so no branch and nothing to read. That is a
     // starting point, not a fault — the caller shows setup, not an error.
     if (!isBranchMissing(err)) throw err;
-    return { branch: false, habits: false, checks: false, description: false };
+    return { branch: false, habits: false, checks: false, description: false, meta: false };
   }
 
   const tables = new Set(
@@ -142,6 +174,7 @@ export async function inspect(db: string, branch: string, token: string): Promis
     habits: tables.has("habits"),
     checks: tables.has("checks"),
     description: false,
+    meta: tables.has("meta"),
   };
   if (!shape.habits) return shape;
 
@@ -167,6 +200,15 @@ export function isBranchMissing(err: unknown): boolean {
  * v1alpha1 read endpoint. Same caveat as isBranchMissing: message matching is
  * brittle, and a miss just shows the raw error instead of the friendly one.
  */
+/**
+ * "table not found: meta" — how Dolt reports a query against a table that a
+ * later migration adds. Same message-matching caveat as isBranchMissing.
+ */
+export function isTableMissing(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /table not found/i.test(msg);
+}
+
 export function isTokenRejected(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /invalid authorization header|no token found for given api token/i.test(msg);
@@ -265,6 +307,12 @@ const CREATE_CHECKS = `CREATE TABLE checks (
 // Dolt's parser rejects an AFTER clause, so column position is left unset.
 const ADD_DESCRIPTION = `ALTER TABLE habits ADD COLUMN description VARCHAR(2000) NOT NULL DEFAULT '';`;
 
+/** Exported: the meta save creates this table on demand for older DBs. */
+export const CREATE_META = `CREATE TABLE meta (
+  k VARCHAR(64) NOT NULL PRIMARY KEY,
+  v VARCHAR(2000) NOT NULL DEFAULT ''
+);`;
+
 export const MIGRATIONS: Migration[] = [
   { id: 1, name: "create-habits", statement: CREATE_HABITS, applied: (s) => s.habits },
   { id: 2, name: "create-checks", statement: CREATE_CHECKS, applied: (s) => s.checks },
@@ -275,6 +323,7 @@ export const MIGRATIONS: Migration[] = [
     // Covered by create-habits on a fresh DB: the snapshot already has it.
     applied: (s) => !s.habits || s.description,
   },
+  { id: 4, name: "create-meta", statement: CREATE_META, applied: (s) => s.meta },
 ];
 
 async function doltFetch(url: string, token: string, method: "GET" | "POST"): Promise<any> {
@@ -373,6 +422,15 @@ export function deleteHabit(id: string): string[] {
     `DELETE FROM checks WHERE habit_id = ${sqlEscape(id)};`,
     `DELETE FROM habits WHERE id = ${sqlEscape(id)};`,
   ];
+}
+
+/** Both keys in one statement — the write endpoint commits per request. */
+export function upsertMeta(meta: Meta): string {
+  return (
+    `INSERT INTO meta (k, v) VALUES ` +
+    `('title', ${sqlEscape(meta.title)}), ('description', ${sqlEscape(meta.description)}) ` +
+    `ON DUPLICATE KEY UPDATE v = VALUES(v);`
+  );
 }
 
 export function insertCheck(habitID: string, date: string): string {

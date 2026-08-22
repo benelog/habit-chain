@@ -8,7 +8,7 @@
  * Toggling swaps only the card, with the day summary following out-of-band.
  */
 
-import type { DateStr, Habit, State, Stats } from "./model";
+import type { DateStr, Habit, Meta, State, Stats } from "./model";
 import { addDays, checkSet, compute, datesOf, dayOfWeek } from "./model";
 
 /** Weeks shown in each card's chain grid. */
@@ -66,16 +66,30 @@ function toggleAttrs(habitID: string, date: DateStr): string {
   );
 }
 
-/** The whole fragment that goes inside #habits. */
-export function renderHabits(state: State, today: DateStr): string {
+/**
+ * The whole fragment that goes inside #habits. readonly is the public page:
+ * no toggling, no editing, and no shared title — the public shell already
+ * carries the title in its own header, while the owner's page shows it here.
+ */
+export function renderHabits(state: State, today: DateStr, readonly = false): string {
   if (state.habits.length === 0) {
-    return renderEmpty();
+    return renderEmpty(readonly);
   }
   const idx = checkSet(state);
   return (
+    (readonly ? "" : renderPageHead(state.meta)) +
     renderDay(state, today, false) +
-    state.habits.map((h) => renderCard(h, state, idx, today)).join("")
+    state.habits.map((h) => renderCard(h, state, idx, today, readonly)).join("")
   );
+}
+
+/** The shared title on the owner's own page. Nothing set, nothing shown. */
+function renderPageHead(meta: Meta): string {
+  if (meta.title === "" && meta.description === "") return "";
+  return `<div class="page-head">
+  ${meta.title === "" ? "" : `<p class="page-title">${esc(meta.title)}</p>`}
+  ${meta.description === "" ? "" : `<p class="page-desc">${esc(meta.description)}</p>`}
+</div>`;
 }
 
 /** One card — the body of a toggle response. Callers check it exists first. */
@@ -84,7 +98,13 @@ export function renderOneCard(state: State, habitID: string, today: DateStr): st
   return h ? renderCard(h, state, checkSet(state), today) : "";
 }
 
-function renderEmpty(): string {
+function renderEmpty(readonly = false): string {
+  if (readonly) {
+    return `<div class="empty">
+    <h2>아직 습관이 없습니다</h2>
+    <p>이 달력의 주인이 첫 습관을 추가하면 여기에 사슬이 자랍니다.</p>
+  </div>`;
+  }
   const seeds = ["아침 30분 달리기", "책 10쪽", "물 2L", "저녁 산책"];
   return `<div class="empty">
     <h2>첫 칸을 채우는 것부터</h2>
@@ -112,6 +132,7 @@ export function renderSetup(): string {
     <p class="setup-note">DB 이름만 넣어도 공개 DB는 읽힙니다. 기록하거나 비공개 DB를 읽으려면 토큰까지 있어야 합니다.</p>
     <div class="chips">
       <button class="primary" type="button" onclick="document.getElementById('settings').showModal()">설정 열기</button>
+      <a class="ghost" href="/help">처음이신가요? 안내 보기</a>
       <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
     </div>
   </div>`;
@@ -123,15 +144,17 @@ export function renderSetup(): string {
  * schema SQL stays as a link, for when that path is refused.
  */
 export function renderPrepare(
-  shape: { branch: boolean; habits: boolean; description: boolean },
+  shape: { branch: boolean; habits: boolean; description: boolean; meta: boolean },
   hasToken: boolean,
 ): string {
-  // Three states, one screen.
+  // Four states, one screen.
   let what = "이 DB는 지난 버전의 표를 쓰고 있습니다. 설명(description) 칸이 없습니다.";
   if (!shape.branch) {
     what = "이 DB에는 아직 커밋이 하나도 없습니다. 그래서 읽을 브랜치조차 없습니다.";
   } else if (!shape.habits) {
     what = "이 DB에는 아직 표가 없습니다.";
+  } else if (shape.description && !shape.meta) {
+    what = "이 DB에는 공개 페이지 제목을 담을 meta 표가 없습니다.";
   }
   const does = shape.branch && shape.habits ? "빠진 칸을 더합니다" : "표를 만듭니다";
 
@@ -185,11 +208,11 @@ export function renderLive(text: string): string {
 }
 
 /** A failed load. Must not look like an empty list. */
-export function renderError(msg: string): string {
+export function renderError(msg: string, retry = "/habits"): string {
   return `<div class="empty">
     <h2>목록을 불러오지 못했습니다</h2>
     <p>${esc(msg)}</p>
-    <div class="chips"><button class="ghost" hx-get="/habits" hx-target="#habits" hx-swap="innerHTML">다시 불러오기</button></div>
+    <div class="chips"><button class="ghost" hx-get="${esc(retry)}" hx-target="#habits" hx-swap="innerHTML">다시 불러오기</button></div>
   </div>`;
 }
 
@@ -204,7 +227,114 @@ export function renderToast(msg: string): string {
   </div>`;
 }
 
-function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr): string {
+/**
+ * The public-page title form, living inside the settings dialog. It answers
+ * with itself — its status line included — because a toast would sit invisible
+ * behind the modal's backdrop. Sent out-of-band with the list so the fields
+ * hold what the DB holds, not what the shell guessed.
+ */
+export function renderMetaForm(
+  meta: Meta,
+  db: string,
+  origin: string,
+  oob: boolean,
+  status = "",
+  bad = false,
+): string {
+  return `<form id="meta-form"${oob ? ` hx-swap-oob="true"` : ""} hx-put="/meta" hx-swap="outerHTML"
+    hx-on::after-request="habitChain.afterMetaSave(event)">
+    <label for="meta-title">제목
+      <input id="meta-title" name="title" type="text" value="${esc(meta.title)}" maxlength="100"
+        placeholder="예: 정상혁의 습관 달력" autocomplete="off">
+    </label>
+    <label for="meta-desc">설명
+      <textarea id="meta-desc" name="description" rows="2" maxlength="2000"
+        placeholder="예: 제가 실천하고 있는 습관의 목록입니다">${esc(meta.description)}</textarea>
+    </label>
+    <div class="row">
+      <button type="submit" class="primary">저장</button>
+      <a class="ghost" href="/@${esc(db)}" target="_blank" rel="noopener">공개 페이지 열기</a>
+    </div>
+    <p class="hint">공유 주소: <code>${esc(origin)}/@${esc(db)}</code> — 공개 DB만 다른 사람에게 보입니다.</p>
+    <p class="set-status${bad ? " bad" : ""}" role="status">${esc(status)}</p>
+  </form>`;
+}
+
+/**
+ * The public page for one DB: /@owner/name. Reads ride with no token, so it
+ * works exactly when the DB is public. The title and description are fetched
+ * before this renders — they belong in <head>, where link previews look —
+ * and the list follows as a fragment carrying the visitor's local date.
+ */
+export function publicShell(db: string, meta: Meta, origin: string): string {
+  const title = meta.title || `${db}의 습관 달력`;
+  const desc = meta.description || "Don't break the chain. 매일 이어붙인 사슬을 눈으로 확인합니다.";
+  const pageUrl = `${origin}/@${db}`;
+
+  return `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${esc(title)} — Habit Chain</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${esc(pageUrl)}">
+<meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
+<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<script src="/htmx.min.js" defer></script>
+</head>
+<body hx-headers='js:{"X-Local-Date": publicToday()}'>
+
+<div id="app">
+  <header class="topbar">
+    <p class="wordmark">${MARK} Habit Chain</p>
+    <a class="ghost" href="/">나도 만들기</a>
+  </header>
+
+  <div class="public-head">
+    <h1 class="public-title">${esc(title)}</h1>
+    ${meta.description === "" ? "" : `<p class="public-desc">${esc(meta.description)}</p>`}
+    <p class="public-db"><a href="https://www.dolthub.com/repositories/${esc(db)}"
+      target="_blank" rel="noopener">${esc(db)}</a></p>
+  </div>
+
+  <main>
+    <section id="habits" class="habits" hx-get="/@${esc(db)}/habits" hx-trigger="load" hx-swap="innerHTML">
+      <p class="sr-only">불러오는 중</p>
+      <div class="sk" aria-hidden="true"><div></div><div></div></div>
+    </section>
+  </main>
+
+  <footer class="public-foot">
+    <p>이 페이지는 <a href="/">Habit Chain</a>으로 만들었습니다 — "Don't break the chain."</p>
+  </footer>
+</div>
+
+<script>
+/* The visitor's local date, or a KST reader before 09:00 sees yesterday. */
+function publicToday() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+/* Error fragments answer with 4xx/5xx and must still replace the skeleton. */
+document.addEventListener("htmx:beforeSwap", (e) => {
+  if (e.detail.xhr.status >= 400) e.detail.shouldSwap = true;
+});
+</script>
+</body>
+</html>`;
+}
+
+function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr, readonly = false): string {
   const stats = compute(datesOf(state, h.id), today);
   const doneToday = idx.has(`${h.id}|${today}`);
   const color = h.color || SWATCHES[0]!;
@@ -215,13 +345,14 @@ function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr): s
   if (stats.current === 0) {
     word = stats.total === 0 ? "일째 · 오늘 첫 칸을 채우세요" : "일째 · 오늘 다시 시작하세요";
   }
+  // A visitor cannot fill the owner's cells, so the coaching words go too.
+  if (readonly && stats.current === 0) {
+    word = stats.total === 0 ? "일 · 아직 시작 전" : "일 · 지금은 끊긴 상태";
+  }
 
-  return `<article class="card" style="--habit:${esc(color)}">
-  <div class="card-head">
-    <div>
-      <h2 class="card-title">${esc(h.name)}</h2>
-      <p class="streak${stats.current === 0 ? " dead" : ""}"><b>${stats.current}</b><span>${word}</span></p>
-    </div>
+  const actions = readonly
+    ? ""
+    : `
     <div class="card-actions">
       <button id="t-${id}" class="today-btn${doneToday ? " done" : ""}"
         aria-pressed="${doneToday}" ${toggleAttrs(h.id, today)}>${doneToday ? "오늘 완료" : "오늘 체크"}</button>
@@ -231,9 +362,16 @@ function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr): s
         hx-delete="/habits/${encodeURIComponent(h.id)}"
         hx-target="#habits" hx-swap="innerHTML" hx-indicator="closest .card"
         hx-confirm="'${esc(h.name)}'의 기록 ${stats.total}회가 함께 지워집니다. 되돌릴 수 없습니다.">${TRASH}</button>
-    </div>
+    </div>`;
+
+  return `<article class="card" style="--habit:${esc(color)}">
+  <div class="card-head">
+    <div>
+      <h2 class="card-title">${esc(h.name)}</h2>
+      <p class="streak${stats.current === 0 ? " dead" : ""}"><b>${stats.current}</b><span>${word}</span></p>
+    </div>${actions}
   </div>
-${renderDesc(h)}${renderEdit(h)}  <div class="card-body">${renderGrid(h, idx, today)}${renderStats(stats)}</div>
+${renderDesc(h)}${readonly ? "" : renderEdit(h)}  <div class="card-body">${renderGrid(h, idx, today, readonly)}${renderStats(stats)}</div>
 </article>`;
 }
 
@@ -291,7 +429,7 @@ function renderStats(s: Stats): string {
  * Cells carry their date: chain shape alone cannot answer "which day was that?"
  * Links are drawn in the gaps, so the numbers leave the chain intact.
  */
-function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
+function renderGrid(h: Habit, idx: Set<string>, today: DateStr, readonly = false): string {
   const end = addDays(today, 6 - dayOfWeek(today));
   const start = addDays(end, -(GRID_WEEKS * 7 - 1));
 
@@ -314,7 +452,9 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
     }
   }
 
-  const parts: string[] = [`<div class="grid" role="group" aria-label="${esc(h.name)} 최근 ${GRID_WEEKS}주">`];
+  const parts: string[] = [
+    `<div class="grid${readonly ? " ro" : ""}" role="group" aria-label="${esc(h.name)} 최근 ${GRID_WEEKS}주">`,
+  ];
   parts.push(`<div class="mon" aria-hidden="true"></div>`);
   DOW.forEach((n, i) => {
     parts.push(`<div class="dow${i === 0 ? " sun" : ""}" aria-hidden="true">${n}</div>`);
@@ -354,6 +494,17 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr): string {
 
     const state = future ? "" : done[i] ? " 완료" : i === broke ? " 미완료, 여기서 사슬이 끊겼습니다" : " 미완료";
     const label = `${md(d)} ${DOW[dayOfWeek(d)]}요일${state}`;
+
+    // The public page shows the chain but cannot pull on it: plain elements,
+    // no htmx, and none of the 35 cells lands in the tab order.
+    if (readonly) {
+      parts.push(
+        `<div class="${cls}" role="img" aria-label="${label}" title="${label}">` +
+          `<span aria-hidden="true">${shown}</span></div>`,
+      );
+      continue;
+    }
+
     const attrs = future
       ? `disabled tabindex="-1"`
       : `id="c-${esc(h.id)}-${d}" aria-pressed="${done[i]}" tabindex="${d === today ? 0 : -1}" ${toggleAttrs(h.id, d)}`;
@@ -467,6 +618,7 @@ export function shell(): string {
           이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.
           <b>DB 이름이 있어야 사슬을 읽고</b>, 토큰까지 있어야 기록됩니다. 비공개 DB는 읽을 때도 토큰이 필요합니다.
           토큰은 저장 버튼을 누를 때 DoltHub에 물어 바로 확인합니다.
+          처음이라면 <a href="/help">시작 안내</a>를 따라오세요.
         </p>
         <label for="set-db">DB 이름
           <input id="set-db" type="text" placeholder="owner/name" spellcheck="false" autofocus
@@ -487,6 +639,17 @@ export function shell(): string {
           <button type="button" class="ghost" onclick="habitChain.forget()">저장한 값 지우기</button>
         </div>
         <p id="set-status" class="set-status" role="status"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>공개 페이지</legend>
+        <p class="hint">
+          공개 DB라면 토큰 없이도 누구나 볼 수 있는 <b>공유 주소</b>가 생깁니다.
+          제목과 설명은 DB에 저장되어 이 화면과 공개 페이지 상단에 함께 보입니다.
+        </p>
+        <form id="meta-form">
+          <p class="hint">DB를 연결하면 제목과 설명을 적을 수 있습니다.</p>
+        </form>
       </fieldset>
 
       <fieldset>
@@ -713,6 +876,11 @@ window.habitChain = {
     const el = document.getElementById("new-name");
     el.value = name;
     el.focus();
+  },
+  // The shared title also sits atop the list; redraw the list after saving it.
+  afterMetaSave(event) {
+    if (!event.detail.successful || event.detail.xhr.status >= 400) return;
+    this.reload();
   },
   // Advance the colour after a successful add, or everything ends up alike.
   afterAdd(event, form) {

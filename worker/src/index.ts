@@ -17,12 +17,14 @@
 
 import * as dolt from "./dolt";
 import { compute, datesOf, isDateStr, isDbName, isToken } from "./model";
-import type { Habit, State } from "./model";
+import type { Habit, Meta, State } from "./model";
 import {
+  publicShell,
   renderDay,
   renderError,
   renderHabits,
   renderLive,
+  renderMetaForm,
   renderOneCard,
   renderPrepare,
   renderSetup,
@@ -60,6 +62,22 @@ export default {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
     }
+    // The onboarding guide (/help) is a static asset: Pages maps the pretty
+    // path to help.html by itself, so it simply falls through to env.ASSETS.
+
+    // The public share page: /@owner/name, read with no token, so it works
+    // exactly for public DBs. The visitor's own settings never ride along.
+    const pub = /^\/@([A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64})(\/habits)?$/.exec(path);
+    if (pub && request.method === "GET") {
+      const db = pub[1]!;
+      const branch = env.DOLT_BRANCH || "main";
+      if (pub[2]) {
+        return await handlePublicList(request, db, branch);
+      }
+      return new Response(publicShell(db, await dolt.readMeta(db, branch), url.origin), {
+        headers: HTML,
+      });
+    }
 
     const isList = path === "/habits" && request.method === "GET";
     const ctx = ctxOf(request, env);
@@ -73,6 +91,9 @@ export default {
       }
       if (path === "/habits" && request.method === "POST") {
         return await handleAdd(request, ctx);
+      }
+      if (path === "/meta" && request.method === "PUT") {
+        return await handleMetaSave(request, ctx, url.origin);
       }
       if (path === "/schema" && request.method === "POST") {
         return await handlePrepare(request, ctx);
@@ -133,7 +154,73 @@ async function handleList(request: Request, ctx: Ctx): Promise<Response> {
     }
     throw err;
   }
-  return new Response(renderHabits(state, todayOf(request)), { headers: HTML });
+  // The meta form rides out-of-band into the settings dialog, so its fields
+  // hold what the DB holds.
+  const origin = new URL(request.url).origin;
+  return new Response(
+    renderHabits(state, todayOf(request)) + renderMetaForm(state.meta, ctx.db, origin, true),
+    { headers: HTML },
+  );
+}
+
+/** The public page's list fragment. Same shape as handleList, minus writes. */
+async function handlePublicList(request: Request, db: string, branch: string): Promise<Response> {
+  const retry = `/@${db}/habits`;
+  let state: State;
+  try {
+    state = await dolt.pull(db, branch, "");
+  } catch (err) {
+    return new Response(renderError(publicProblem(err), retry), { status: 502, headers: HTML });
+  }
+  return new Response(renderHabits(state, todayOf(request), true), { headers: HTML });
+}
+
+/** Turns raw DoltHub errors into something a visitor can act on. */
+function publicProblem(err: unknown): string {
+  if (dolt.isBranchMissing(err) || dolt.isTableMissing(err)) {
+    return "이 DB에는 아직 습관 기록이 없습니다.";
+  }
+  const msg = message(err);
+  // "no such repository" is what the read API actually says (observed 2026-08);
+  // the 404 spellings are kept in case other paths phrase it differently.
+  return /no such repository|repository not found|DoltHub 404/i.test(msg)
+    ? "이 DB를 읽을 수 없습니다. 비공개 DB이거나 존재하지 않는 DB일 수 있습니다."
+    : msg;
+}
+
+/**
+ * Saves the public page's title and description into the user's DB. Every
+ * answer — success or failure — is the form itself: this form lives in the
+ * modal settings dialog, where a toast would sit invisible behind the backdrop.
+ */
+async function handleMetaSave(request: Request, ctx: Ctx, origin: string): Promise<Response> {
+  const form = await request.formData();
+  const meta: Meta = {
+    // The title lands in an og:title and a heading; one line only.
+    title: String(form.get("title") ?? "").replace(/\s+/g, " ").trim().slice(0, 100),
+    description: normalizeDesc(String(form.get("description") ?? "")),
+  };
+  const answer = (status: number, note: string, bad: boolean) =>
+    new Response(renderMetaForm(meta, ctx.db, origin, false, note, bad), { status, headers: HTML });
+
+  const problem = dbProblem(ctx);
+  if (problem) return answer(400, problem, true);
+  if (ctx.token === "") return answer(401, "설정에 토큰을 저장해야 기록할 수 있습니다.", true);
+  if (!isToken(ctx.token)) return answer(400, "토큰에 쓸 수 없는 글자가 들어 있습니다.", true);
+
+  try {
+    try {
+      await dolt.write(ctx.token, ctx.db, ctx.branch, [dolt.upsertMeta(meta)]);
+    } catch (err) {
+      // The meta table arrived in a later migration; create it on first save.
+      if (!dolt.isTableMissing(err)) throw err;
+      await dolt.write(ctx.token, ctx.db, ctx.branch, [dolt.CREATE_META, dolt.upsertMeta(meta)]);
+    }
+  } catch (err) {
+    return answer(502, `저장하지 못했습니다: ${message(err)}`, true);
+  }
+
+  return answer(200, "저장했습니다. 공개 페이지에 바로 반영됩니다.", false);
 }
 
 /**

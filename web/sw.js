@@ -43,11 +43,13 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Leave data-bearing responses alone; caching one freezes old records.
-  if (/^\/(habits|export|api)(\/|$)/.test(url.pathname)) return;
+  // /@owner/name pages (and their fragments) are someone's current chain.
+  if (/^\/(habits|export|api|meta)(\/|$)/.test(url.pathname) || url.pathname.startsWith("/@")) return;
 
-  // Navigation. The shell holds no data, so caching it is safe — the list
-  // fills itself with a separate /habits request once the shell is up.
+  // Navigation to the app shell. Only "/" is cached under "./" — caching
+  // whatever page was last visited there would swap the shell for it.
   if (req.mode === "navigate") {
+    if (url.pathname !== "/") return;
     event.respondWith(
       fetch(req)
         .then((res) => {

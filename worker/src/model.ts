@@ -21,9 +21,24 @@ export interface Check {
   note: string;
 }
 
+/**
+ * The public page's heading, stored in the user's own DB — the only place a
+ * token-less public read can reach.
+ */
+export interface Meta {
+  /** e.g. "정상혁의 습관 달력". Empty falls back to the DB name. */
+  title: string;
+  description: string;
+}
+
+export function emptyMeta(): Meta {
+  return { title: "", description: "" };
+}
+
 export interface State {
   habits: Habit[];
   checks: Check[];
+  meta: Meta;
 }
 
 /** Chain metrics for one habit. */

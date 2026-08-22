@@ -19,6 +19,13 @@ CREATE TABLE IF NOT EXISTS checks (
   PRIMARY KEY (habit_id, check_date)
 );
 
+-- Public-page heading: rows keyed 'title' and 'description'. Lives in the
+-- user's DB because that is the only place a token-less public read reaches.
+CREATE TABLE IF NOT EXISTS meta (
+  k VARCHAR(64) NOT NULL PRIMARY KEY,
+  v VARCHAR(2000) NOT NULL DEFAULT ''
+);
+
 -- On a DB that already has habits, the CREATE above does nothing: IF NOT
 -- EXISTS will not reconcile columns. Such a DB needs this line once.
 --
