@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { publicShell, renderHabits, renderMetaForm, renderSetup, shell } from "./render";
+import { renderCalHead, renderHabits, renderMetaForm, renderSetup, shell } from "./render";
 import type { State } from "./model";
 
 /** Pulls out just the inline script shell() embeds. */
@@ -39,10 +39,78 @@ describe("shell", () => {
   it("설정은 버튼으로만 저장된다", () => {
     const html = shell();
     expect(html).toContain("habitChain.save()");
-    expect(html).toContain("habitChain.forget()");
+    expect(html).toContain("removeProfile");
     // Going back to onchange autosave would store half-pasted tokens.
     expect(html).not.toContain("habitChain.saveDb");
     expect(html).not.toContain("habitChain.saveToken");
+  });
+
+  it("홈은 /habits 조각을 부르고, 갈림길 코드를 품는다", () => {
+    const html = shell();
+    expect(html).toContain('hx-get="/habits"');
+    expect(html).toContain("renderPicker");
+    expect(html).not.toContain("og:title");
+  });
+
+  it("토큰은 페이지의 달력과 이름이 같은 프로필에서만 나온다", () => {
+    const src = inlineScript(shell());
+    expect(src).toContain("p.db === this.db()");
+    expect(src).toContain("pathDb");
+  });
+
+  it("옛 저장 키는 새 목록이 저장된 뒤에만 지운다", () => {
+    const src = inlineScript(shell());
+    // persist가 실패하면 토큰의 유일한 사본이 사라지면 안 된다.
+    expect(src).toMatch(/if \(this\.persist\(list\)\) \{\s*localStorage\.removeItem\("habit-chain\.db"\)/);
+  });
+});
+
+describe("shell · 달력 페이지(/@owner/name)", () => {
+  const meta = { title: "정상혁의 습관 달력", description: "제가 실천하는 습관들" };
+
+  it("제목과 설명이 og 태그까지 올라간다", () => {
+    const html = shell({ db: "benelog/habit-chain", meta, origin: "https://chain.benelog.net" });
+    expect(html).toContain("<title>정상혁의 습관 달력 — Habit Chain</title>");
+    expect(html).toContain('property="og:title" content="정상혁의 습관 달력"');
+    expect(html).toContain('property="og:description" content="제가 실천하는 습관들"');
+    expect(html).toContain('property="og:url" content="https://chain.benelog.net/@benelog/habit-chain"');
+    expect(html).toContain('property="og:image" content="https://chain.benelog.net/icons/icon-512.png"');
+    expect(html).toContain('hx-get="/@benelog/habit-chain/habits"');
+  });
+
+  it("제목이 비면 DB 이름으로 대신한다", () => {
+    const html = shell({ db: "benelog/habit-chain", meta: { title: "", description: "" }, origin: "https://x.test" });
+    expect(html).toContain("<title>benelog/habit-chain의 습관 달력 — Habit Chain</title>");
+  });
+
+  it("남의 공개 DB에 든 태그가 head로 새지 않는다", () => {
+    const html = shell({
+      db: "a/b",
+      meta: { title: '"><script>alert(1)</script>', description: "" },
+      origin: "https://x.test",
+    });
+    expect(html).not.toContain("<script>alert(1)</script>");
+  });
+
+  it("주인 화면과 방문자 화면이 같은 페이지다 — 설정과 추가 폼이 실려 온다", () => {
+    const html = shell({ db: "a/b", meta: { title: "", description: "" }, origin: "https://x.test" });
+    expect(html).toContain('id="settings"');
+    expect(html).toContain('class="add-form"');
+    expect(html).toContain('id="cal-title"');
+    expect(html).toContain('id="cal-desc"');
+  });
+});
+
+describe("renderCalHead", () => {
+  it("비공개 DB의 제목을 주인의 조각이 oob로 바로잡는다", () => {
+    const html = renderCalHead({ title: "내 달력", description: "설명" }, "a/b");
+    expect(html).toContain('id="cal-title" hx-swap-oob="true"');
+    expect(html).toContain("내 달력");
+    expect(html).toContain('id="cal-desc" hx-swap-oob="true"');
+  });
+
+  it("제목이 비면 DB 이름으로 대신한다", () => {
+    expect(renderCalHead({ title: "", description: "" }, "a/b")).toContain("a/b의 습관 달력");
   });
 });
 
@@ -129,14 +197,6 @@ describe("renderHabits", () => {
     expect(html).toContain("&lt;/textarea&gt;");
   });
 
-  it("제목을 정하면 자기 화면 위에도 보인다", () => {
-    const titled: State = { ...state, meta: { title: "정상혁의 습관 달력", description: "제가 실천하는 습관들" } };
-    const html = renderHabits(titled, today);
-    expect(html).toContain('<p class="page-title">정상혁의 습관 달력</p>');
-    expect(html).toContain('<p class="page-desc">제가 실천하는 습관들</p>');
-    // Nothing set, nothing shown — no empty band above the list.
-    expect(renderHabits(state, today)).not.toContain("page-head");
-  });
 });
 
 describe("renderHabits · 공개(읽기 전용)", () => {
@@ -158,46 +218,6 @@ describe("renderHabits · 공개(읽기 전용)", () => {
     expect(html).toContain('class="grid ro"');
   });
 
-  it("제목은 조각이 아니라 공개 껍데기가 갖는다 — 두 번 보이지 않도록", () => {
-    expect(renderHabits(state, today, true)).not.toContain("page-head");
-  });
-});
-
-describe("publicShell", () => {
-  it("제목과 설명이 og 태그까지 올라간다", () => {
-    const html = publicShell(
-      "benelog/habit-chain",
-      { title: "정상혁의 습관 달력", description: "제가 실천하는 습관들" },
-      "https://chain.benelog.net",
-    );
-    expect(html).toContain("<title>정상혁의 습관 달력 — Habit Chain</title>");
-    expect(html).toContain('property="og:title" content="정상혁의 습관 달력"');
-    expect(html).toContain('property="og:description" content="제가 실천하는 습관들"');
-    expect(html).toContain('property="og:url" content="https://chain.benelog.net/@benelog/habit-chain"');
-    expect(html).toContain('property="og:image" content="https://chain.benelog.net/icons/icon-512.png"');
-    expect(html).toContain('hx-get="/@benelog/habit-chain/habits"');
-  });
-
-  it("제목이 비면 DB 이름으로 대신한다", () => {
-    const html = publicShell("benelog/habit-chain", { title: "", description: "" }, "https://x.test");
-    expect(html).toContain("<title>benelog/habit-chain의 습관 달력 — Habit Chain</title>");
-  });
-
-  it("남의 공개 DB에 든 태그가 head로 새지 않는다", () => {
-    const html = publicShell(
-      "a/b",
-      { title: '"><script>alert(1)</script>', description: "" },
-      "https://x.test",
-    );
-    expect(html).not.toContain("<script>alert(1)</script>");
-  });
-
-  it("방문자의 설정을 읽지 않는다 — 로컬 날짜만 헤더로 보낸다", () => {
-    const html = publicShell("a/b", { title: "", description: "" }, "https://x.test");
-    expect(html).not.toContain("X-Dolt-Token");
-    expect(html).not.toContain("localStorage");
-    expect(html).toContain("X-Local-Date");
-  });
 });
 
 describe("renderMetaForm", () => {

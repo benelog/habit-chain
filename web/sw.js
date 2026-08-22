@@ -43,8 +43,23 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Leave data-bearing responses alone; caching one freezes old records.
-  // /@owner/name pages (and their fragments) are someone's current chain.
-  if (/^\/(habits|export|api|meta)(\/|$)/.test(url.pathname) || url.pathname.startsWith("/@")) return;
+  if (/^\/(habits|export|api|meta)(\/|$)/.test(url.pathname)) return;
+
+  // Calendar pages: the shell may be cached per URL — its data arrives via
+  // fragments, which live under /@db/habits and must stay on the network.
+  if (url.pathname.startsWith("/@")) {
+    if (req.mode !== "navigate") return;
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
 
   // Navigation to the app shell. Only "/" is cached under "./" — caching
   // whatever page was last visited there would swap the shell for it.

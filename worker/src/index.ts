@@ -19,7 +19,7 @@ import * as dolt from "./dolt";
 import { compute, datesOf, isDateStr, isDbName, isToken } from "./model";
 import type { Habit, Meta, State } from "./model";
 import {
-  publicShell,
+  renderCalHead,
   renderDay,
   renderError,
   renderHabits,
@@ -65,29 +65,37 @@ export default {
     // The onboarding guide (/help) is a static asset: Pages maps the pretty
     // path to help.html by itself, so it simply falls through to env.ASSETS.
 
-    // The public share page: /@owner/name, read with no token, so it works
-    // exactly for public DBs. The visitor's own settings never ride along.
-    const pub = /^\/@([A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64})(\/habits)?$/.exec(path);
-    if (pub && request.method === "GET") {
-      const db = pub[1]!;
+    // Calendar pages: /@owner/name is one URL for everyone — owner and
+    // visitor alike. The list fragment becomes editable when the browser
+    // holds that DB's token; without one it is the public read-only view.
+    const cal = /^\/@([A-Za-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64})(\/habits)?$/.exec(path);
+    if (cal && !cal[2] && request.method === "GET") {
+      const db = cal[1]!;
       const branch = env.DOLT_BRANCH || "main";
-      if (pub[2]) {
-        return await handlePublicList(request, db, branch);
-      }
-      return new Response(publicShell(db, await dolt.readMeta(db, branch), url.origin), {
+      return new Response(shell({ db, meta: await cachedMeta(db, branch), origin: url.origin }), {
         headers: HTML,
       });
     }
+    const calFrag = cal && cal[2] && request.method === "GET" ? cal[1]! : null;
 
-    const isList = path === "/habits" && request.method === "GET";
-    const ctx = ctxOf(request, env);
+    const isList = (path === "/habits" || calFrag !== null) && request.method === "GET";
+    const ctx: Ctx = calFrag
+      ? {
+          db: calFrag,
+          token: (request.headers.get("X-Dolt-Token") || "").trim(),
+          branch: env.DOLT_BRANCH || "main",
+        }
+      : ctxOf(request, env);
 
     try {
       if (path === "/api/token/check" && request.method === "GET") {
         return await handleTokenCheck(ctx);
       }
+      if (calFrag && ctx.token === "") {
+        return await handlePublicList(request, ctx.db, ctx.branch);
+      }
       if (isList) {
-        return await handleList(request, ctx);
+        return await handleList(request, ctx, calFrag !== null);
       }
       if (path === "/habits" && request.method === "POST") {
         return await handleAdd(request, ctx);
@@ -122,7 +130,10 @@ export default {
       // A failed list leaves nothing to show, so the error takes the screen.
       // A failed write is different: what is on screen is still valid.
       return isList
-        ? new Response(renderError(msg), { status: 502, headers: HTML })
+        ? new Response(renderError(msg, calFrag ? `/@${calFrag}/habits` : "/habits"), {
+            status: 502,
+            headers: HTML,
+          })
         : toast(msg, 502);
     }
 
@@ -130,7 +141,7 @@ export default {
   },
 };
 
-async function handleList(request: Request, ctx: Ctx): Promise<Response> {
+async function handleList(request: Request, ctx: Ctx, cal = false): Promise<Response> {
   // Empty settings is a starting point, not a failure — 200 with guidance.
   if (ctx.db === "") {
     return new Response(renderSetup(), { headers: HTML });
@@ -155,10 +166,14 @@ async function handleList(request: Request, ctx: Ctx): Promise<Response> {
     throw err;
   }
   // The meta form rides out-of-band into the settings dialog, so its fields
-  // hold what the DB holds.
+  // hold what the DB holds. On a calendar page the header rides too: the
+  // shell read meta without a token, which a private DB refuses — this load,
+  // made with the owner's token, carries the real title.
   const origin = new URL(request.url).origin;
   return new Response(
-    renderHabits(state, todayOf(request)) + renderMetaForm(state.meta, ctx.db, origin, true),
+    renderHabits(state, todayOf(request)) +
+      renderMetaForm(state.meta, ctx.db, origin, true) +
+      (cal ? renderCalHead(state.meta, ctx.db) : ""),
     { headers: HTML },
   );
 }
@@ -220,7 +235,10 @@ async function handleMetaSave(request: Request, ctx: Ctx, origin: string): Promi
     return answer(502, `저장하지 못했습니다: ${message(err)}`, true);
   }
 
-  return answer(200, "저장했습니다. 공개 페이지에 바로 반영됩니다.", false);
+  try {
+    await caches.default.delete(metaCacheKey(ctx.db, ctx.branch));
+  } catch {}
+  return answer(200, "저장했습니다. 페이지 상단과 공유 미리보기에 반영됩니다.", false);
 }
 
 /**
@@ -436,6 +454,38 @@ async function handleExport(url: URL, ctx: Ctx): Promise<Response> {
       "Content-Disposition": `attachment; filename="habit-chain-${day}.json"`,
     },
   });
+}
+
+/**
+ * Meta for a calendar shell's <head>, cached briefly so opening one's own
+ * calendar does not pay a DoltHub read (~0.9s) every time. The cache is
+ * per-colo: a save purges only the copy where the save landed, and other
+ * colos age out within the TTL — the editable fragment corrects the visible
+ * header out-of-band either way, so only link previews can be briefly stale.
+ */
+const META_TTL_S = 300;
+
+function metaCacheKey(db: string, branch: string): Request {
+  return new Request(`https://meta.habit-chain.internal/${db}/${branch}`);
+}
+
+async function cachedMeta(db: string, branch: string): Promise<Meta> {
+  try {
+    const hit = await caches.default.match(metaCacheKey(db, branch));
+    if (hit) return (await hit.json()) as Meta;
+  } catch {
+    // The cache is an optimization; reading past it is always correct.
+  }
+  const meta = await dolt.readMeta(db, branch);
+  try {
+    await caches.default.put(
+      metaCacheKey(db, branch),
+      new Response(JSON.stringify(meta), {
+        headers: { "Cache-Control": `max-age=${META_TTL_S}`, "Content-Type": "application/json" },
+      }),
+    );
+  } catch {}
+  return meta;
 }
 
 /** One line for screen readers; on screen colour and shape say this. */

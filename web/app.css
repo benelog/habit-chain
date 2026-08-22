@@ -152,17 +152,7 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 .day.all-done .day-count b { color: var(--text); }
 
-/* ── Shared page title ────────────────────────────
-   The user's own words for their calendar; shown on their page and, larger,
-   on the public page. Greyscale like the rest of the shell. */
-.page-head { padding: 2px 2px 12px; }
-.page-title { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
-.page-desc {
-  margin: 3px 0 0; font-size: 13px; color: var(--muted);
-  white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6;
-}
-
-/* ── Public page (/@owner/name) ───────────────────── */
+/* ── Calendar page (/@owner/name) ─────────────────── */
 .public-head { padding: 14px 2px 22px; }
 .public-title {
   margin: 0; font-size: 24px; letter-spacing: -.02em;
@@ -174,19 +164,57 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
   white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65;
   max-width: 52ch;
 }
+.public-desc:empty { display: none; }
 .public-db { margin: 9px 0 0; font-size: 12px; }
 .public-db a { color: var(--muted); text-decoration-color: var(--line); text-underline-offset: 2px; }
 .public-db a:hover { color: var(--text); }
+/* The footer speaks to visitors; the owner already knows what this is. */
 .public-foot {
+  display: none;
   margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line-soft);
   font-size: 12.5px; color: var(--muted); text-align: center;
 }
+body.viewer .public-foot { display: block; }
 .public-foot p { margin: 0; }
 .public-foot a { color: var(--text); text-decoration-color: var(--muted); text-underline-offset: 2px; }
+
+/* A browser without this calendar's token can look but not write. */
+body.viewer .add-form { display: none; }
 
 /* Read-only grid: the chain shows, but nothing invites a press. */
 .grid.ro .cell { cursor: default; }
 .grid.ro .cell:hover { border-color: transparent; }
+
+/* ── Calendar picker (home with several saved) ────── */
+.picker-list { display: grid; gap: 8px; margin-top: 16px; text-align: left; }
+.picker-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 13px 15px; text-decoration: none; color: var(--text);
+}
+.picker-item:hover { border-color: var(--muted); }
+.picker-item code { font-size: 13.5px; background: transparent; padding: 0; }
+.picker-item small { font-size: 11.5px; color: var(--muted); flex: none; }
+.picker > p { margin-top: 14px; font-size: 12.5px; }
+
+/* ── Saved calendars inside settings ──────────────── */
+.profile-list { display: grid; gap: 6px; margin: 10px 0 14px; }
+.profile-list .hint { margin: 0; }
+.profile-row { display: flex; align-items: center; gap: 8px; }
+.profile-row .profile-open {
+  flex: 1; min-width: 0; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px;
+  border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px;
+  text-decoration: none; color: var(--text); font-size: 13px;
+}
+.profile-row .profile-open:hover { border-color: var(--muted); }
+.profile-row.here .profile-open { border-color: var(--muted); background: var(--panel-2); }
+.profile-row .profile-open code {
+  background: transparent; padding: 0; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.profile-row .profile-open small { color: var(--muted); font-size: 11px; flex: none; }
+.profile-row button { flex: none; }
 
 /* ── Habit cards ──────────────────────────────────── */
 .habits { display: grid; gap: 12px; }
@@ -399,7 +427,8 @@ button.danger:hover { background: var(--break); color: var(--bg); border-color: 
 }
 
 /* Nothing can be added yet, so hide a form that would only raise a toast. */
-#habits:has(.setup) ~ .add-form { display: none; }
+#habits:has(.setup) ~ .add-form,
+#habits:has(.picker) ~ .add-form { display: none; }
 .chip {
   font-size: 12.5px; font-weight: 500; padding: 6px 11px; border-radius: 999px;
   background: transparent; color: var(--muted);

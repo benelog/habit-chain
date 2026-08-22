@@ -6,6 +6,11 @@
  *
  * Fragments come in two sizes — the whole list (#habits) and one card (.card).
  * Toggling swaps only the card, with the day summary following out-of-band.
+ *
+ * Pages come in two kinds sharing one shell: home (/) routes between setup,
+ * a calendar picker and a redirect, and a calendar page (/@owner/name) shows
+ * one DB — editable when this browser holds that DB's token, read-only for
+ * everyone else.
  */
 
 import type { DateStr, Habit, Meta, State, Stats } from "./model";
@@ -67,9 +72,9 @@ function toggleAttrs(habitID: string, date: DateStr): string {
 }
 
 /**
- * The whole fragment that goes inside #habits. readonly is the public page:
- * no toggling, no editing, and no shared title — the public shell already
- * carries the title in its own header, while the owner's page shows it here.
+ * The whole fragment that goes inside #habits. readonly is the visitor's view:
+ * no toggling, no editing. The calendar's title is not here — the page shell
+ * owns it, and the editable load corrects it out-of-band (renderCalHead).
  */
 export function renderHabits(state: State, today: DateStr, readonly = false): string {
   if (state.habits.length === 0) {
@@ -77,19 +82,9 @@ export function renderHabits(state: State, today: DateStr, readonly = false): st
   }
   const idx = checkSet(state);
   return (
-    (readonly ? "" : renderPageHead(state.meta)) +
     renderDay(state, today, false) +
     state.habits.map((h) => renderCard(h, state, idx, today, readonly)).join("")
   );
-}
-
-/** The shared title on the owner's own page. Nothing set, nothing shown. */
-function renderPageHead(meta: Meta): string {
-  if (meta.title === "" && meta.description === "") return "";
-  return `<div class="page-head">
-  ${meta.title === "" ? "" : `<p class="page-title">${esc(meta.title)}</p>`}
-  ${meta.description === "" ? "" : `<p class="page-desc">${esc(meta.description)}</p>`}
-</div>`;
 }
 
 /** One card — the body of a toggle response. Callers check it exists first. */
@@ -116,9 +111,9 @@ function renderEmpty(readonly = false): string {
 }
 
 /**
- * Shown when settings are empty. This is onboarding, not an error, so it is not
- * renderError — that screen's "reload" fixes nothing here. Settings is the only
- * place to go, so that is the only button.
+ * Shown when no calendar is saved yet. This is onboarding, not an error, so it
+ * is not renderError — that screen's "reload" fixes nothing here. Settings is
+ * the only place to go, so that is the only button.
  */
 export function renderSetup(): string {
   return `<div class="empty setup">
@@ -140,7 +135,7 @@ export function renderSetup(): string {
 
 /**
  * The DB exists but its shape is wrong — no branch, no tables, or a missing
- * column. All three take the same action from the user: one button. The manual
+ * column. All take the same action from the user: one button. The manual
  * schema SQL stays as a link, for when that path is refused.
  */
 export function renderPrepare(
@@ -228,8 +223,8 @@ export function renderToast(msg: string): string {
 }
 
 /**
- * The public-page title form, living inside the settings dialog. It answers
- * with itself — its status line included — because a toast would sit invisible
+ * The calendar-title form, living inside the settings dialog. It answers with
+ * itself — its status line included — because a toast would sit invisible
  * behind the modal's backdrop. Sent out-of-band with the list so the fields
  * hold what the DB holds, not what the shell guessed.
  */
@@ -253,89 +248,23 @@ export function renderMetaForm(
     </label>
     <div class="row">
       <button type="submit" class="primary">저장</button>
-      <a class="ghost" href="/@${esc(db)}" target="_blank" rel="noopener">공개 페이지 열기</a>
     </div>
-    <p class="hint">공유 주소: <code>${esc(origin)}/@${esc(db)}</code> — 공개 DB만 다른 사람에게 보입니다.</p>
+    <p class="hint">이 달력의 주소가 곧 공유 주소입니다: <code>${esc(origin)}/@${esc(db)}</code>
+      — 공개 DB라면 누구나 열어볼 수 있고, 기록은 토큰을 가진 브라우저에서만 됩니다.</p>
     <p class="set-status${bad ? " bad" : ""}" role="status">${esc(status)}</p>
   </form>`;
 }
 
 /**
- * The public page for one DB: /@owner/name. Reads ride with no token, so it
- * works exactly when the DB is public. The title and description are fetched
- * before this renders — they belong in <head>, where link previews look —
- * and the list follows as a fragment carrying the visitor's local date.
+ * Out-of-band update for the calendar page's header. The shell reads meta
+ * without a token, so a private DB's title never survives that first read;
+ * the owner's list fragment carries the real value and corrects it here.
  */
-export function publicShell(db: string, meta: Meta, origin: string): string {
-  const title = meta.title || `${db}의 습관 달력`;
-  const desc = meta.description || "Don't break the chain. 매일 이어붙인 사슬을 눈으로 확인합니다.";
-  const pageUrl = `${origin}/@${db}`;
-
-  return `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>${esc(title)} — Habit Chain</title>
-<meta name="description" content="${esc(desc)}">
-<meta property="og:type" content="website">
-<meta property="og:title" content="${esc(title)}">
-<meta property="og:description" content="${esc(desc)}">
-<meta property="og:url" content="${esc(pageUrl)}">
-<meta property="og:image" content="${esc(origin)}/icons/icon-512.png">
-<meta property="og:image:width" content="512">
-<meta property="og:image:height" content="512">
-<meta name="twitter:card" content="summary">
-<meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
-<link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..700&display=swap">
-<link rel="stylesheet" href="/app.css">
-<script src="/htmx.min.js" defer></script>
-</head>
-<body hx-headers='js:{"X-Local-Date": publicToday()}'>
-
-<div id="app">
-  <header class="topbar">
-    <p class="wordmark">${MARK} Habit Chain</p>
-    <a class="ghost" href="/">나도 만들기</a>
-  </header>
-
-  <div class="public-head">
-    <h1 class="public-title">${esc(title)}</h1>
-    ${meta.description === "" ? "" : `<p class="public-desc">${esc(meta.description)}</p>`}
-    <p class="public-db"><a href="https://www.dolthub.com/repositories/${esc(db)}"
-      target="_blank" rel="noopener">${esc(db)}</a></p>
-  </div>
-
-  <main>
-    <section id="habits" class="habits" hx-get="/@${esc(db)}/habits" hx-trigger="load" hx-swap="innerHTML">
-      <p class="sr-only">불러오는 중</p>
-      <div class="sk" aria-hidden="true"><div></div><div></div></div>
-    </section>
-  </main>
-
-  <footer class="public-foot">
-    <p>이 페이지는 <a href="/">Habit Chain</a>으로 만들었습니다 — "Don't break the chain."</p>
-  </footer>
-</div>
-
-<script>
-/* The visitor's local date, or a KST reader before 09:00 sees yesterday. */
-function publicToday() {
-  const d = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
-}
-/* Error fragments answer with 4xx/5xx and must still replace the skeleton. */
-document.addEventListener("htmx:beforeSwap", (e) => {
-  if (e.detail.xhr.status >= 400) e.detail.shouldSwap = true;
-});
-</script>
-</body>
-</html>`;
+export function renderCalHead(meta: Meta, db: string): string {
+  return (
+    `<h1 class="public-title" id="cal-title" hx-swap-oob="true">${esc(meta.title || `${db}의 습관 달력`)}</h1>` +
+    `<p class="public-desc" id="cal-desc" hx-swap-oob="true">${esc(meta.description)}</p>`
+  );
 }
 
 function renderCard(h: Habit, state: State, idx: Set<string>, today: DateStr, readonly = false): string {
@@ -499,7 +428,7 @@ function renderGrid(h: Habit, idx: Set<string>, today: DateStr, readonly = false
     const state = future ? "" : done[i] ? " 완료" : i === broke ? " 미완료, 여기서 사슬이 끊겼습니다" : " 미완료";
     const label = `${md(d)} ${DOW[dayOfWeek(d)]}요일${state}`;
 
-    // The public page shows the chain but cannot pull on it: plain elements,
+    // The visitor's view shows the chain but cannot pull on it: plain elements,
     // no htmx, and none of the 35 cells lands in the tab order.
     if (readonly) {
       parts.push(
@@ -543,13 +472,67 @@ const MARK =
   `<svg viewBox="0 0 30 16" width="28" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2">` +
   `<rect x="1" y="3" width="15" height="10" rx="5"/><rect x="14" y="3" width="15" height="10" rx="5"/></svg>`;
 
+export interface ShellOpts {
+  /** The calendar page /@owner/name; home when absent. */
+  db?: string;
+  /** Read without a token before rendering — og tags must be server-side. */
+  meta?: Meta;
+  origin?: string;
+}
+
 /**
  * The page returned on first load. It carries no data: the first GET is not an
  * htmx request, so no hx-headers are attached and the server knows neither the
- * user's local date nor which DB to read. The list fills itself with a second
- * request via hx-trigger="load", which does carry the headers.
+ * user's local date nor which token the browser holds. The list fills itself
+ * with a second request via hx-trigger="load", which does carry the headers.
+ *
+ * Home and calendar pages share this shell. On a calendar page the DB comes
+ * from the URL and the token from the browser's matching profile; visitors
+ * without one get the read-only view and never send their other tokens here.
  */
-export function shell(): string {
+export function shell(opts: ShellOpts = {}): string {
+  const db = opts.db ?? "";
+  const isCal = db !== "";
+  const meta = opts.meta ?? { title: "", description: "" };
+  const origin = opts.origin ?? "";
+  const title = meta.title || `${db}의 습관 달력`;
+  const desc = meta.description || "Don't break the chain. 매일 이어붙인 사슬을 눈으로 확인합니다.";
+
+  const head = isCal
+    ? `<title>${esc(title)} — Habit Chain</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${esc(origin)}/@${esc(db)}">
+<meta property="og:image" content="${esc(origin)}/icons/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">`
+    : `<title>Habit Chain — 끊지 말 것</title>
+<meta name="description" content="Don't break the chain. 매일 이어붙인 사슬을 눈으로 확인하는 습관 추적기.">`;
+
+  // Always both elements, even empty — afterMetaSave and renderCalHead
+  // update them in place, and :empty CSS keeps a blank one invisible.
+  const calHead = isCal
+    ? `
+  <div class="public-head">
+    <h1 class="public-title" id="cal-title">${esc(title)}</h1>
+    <p class="public-desc" id="cal-desc">${esc(meta.description)}</p>
+    <p class="public-db"><a href="https://www.dolthub.com/repositories/${esc(db)}"
+      target="_blank" rel="noopener">${esc(db)}</a></p>
+  </div>
+`
+    : "";
+
+  const calFoot = isCal
+    ? `
+  <footer class="public-foot">
+    <p>이 페이지는 <a href="/">Habit Chain</a>으로 만들었습니다 — "Don't break the chain."</p>
+  </footer>
+`
+    : "";
+
   const swatches = SWATCHES.map(
     (c, i) =>
       `<label style="--sw:${c}"><input type="radio" name="color" value="${c}"${
@@ -562,8 +545,7 @@ export function shell(): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Habit Chain — 끊지 말 것</title>
-<meta name="description" content="Don't break the chain. 매일 이어붙인 사슬을 눈으로 확인하는 습관 추적기.">
+${head}
 <meta name="theme-color" content="#131211" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#f1f1ef" media="(prefers-color-scheme: light)">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -582,13 +564,13 @@ export function shell(): string {
 
 <div id="app">
   <header class="topbar">
-    <h1 class="wordmark">${MARK} Habit Chain</h1>
+    <${isCal ? "p" : "h1"} class="wordmark">${MARK} Habit Chain</${isCal ? "p" : "h1"}>
     <button class="icon-btn" aria-label="설정" title="설정"
       onclick="document.getElementById('settings').showModal()">${GEAR}</button>
   </header>
-
+${calHead}
   <main>
-    <section id="habits" class="habits" hx-get="/habits" hx-trigger="load" hx-swap="innerHTML">
+    <section id="habits" class="habits" hx-get="${isCal ? `/@${esc(db)}/habits` : "/habits"}" hx-trigger="load" hx-swap="innerHTML">
       <p class="sr-only">불러오는 중</p>
       <div class="sk" aria-hidden="true"><div></div><div></div></div>
     </section>
@@ -605,7 +587,7 @@ export function shell(): string {
       </div>
     </form>
   </main>
-
+${calFoot}
   <div id="toast" aria-live="assertive"></div>
 
   <dialog id="settings">
@@ -617,13 +599,15 @@ export function shell(): string {
 
     <div class="settings-body">
       <fieldset>
-        <legend>DoltHub</legend>
+        <legend>내 달력</legend>
         <p class="hint">
           이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.
+          DB를 여러 개 저장해 두고 골라 쓸 수 있습니다 — 공개용과 비공개용을 나누고 싶다면 달력을 두 개 만드세요.
           <b>DB 이름이 있어야 사슬을 읽고</b>, 토큰까지 있어야 기록됩니다. 비공개 DB는 읽을 때도 토큰이 필요합니다.
           토큰은 저장 버튼을 누를 때 DoltHub에 물어 바로 확인합니다.
           처음이라면 <a href="/help">시작 안내</a>를 따라오세요.
         </p>
+        <div id="profile-list" class="profile-list"></div>
         <label for="set-db">DB 이름
           <input id="set-db" type="text" placeholder="owner/name" spellcheck="false" autofocus
             autocapitalize="none" autocorrect="off" autocomplete="off"
@@ -636,11 +620,10 @@ export function shell(): string {
         </label>
         <p class="hint">
           토큰은 서버가 아닌 이 브라우저에만 저장됩니다.
-          <b>공용 컴퓨터에서는 토큰을 입력했다면 사용을 끝낸 후에 삭제해주세요.</b>
+          <b>공용 컴퓨터에서는 토큰을 입력했다면 사용을 끝낸 후에 목록에서 지워 주세요.</b>
         </p>
         <div class="row">
           <button type="button" class="primary" onclick="habitChain.save()">저장</button>
-          <button type="button" class="ghost" onclick="habitChain.forget()">저장한 값 지우기</button>
         </div>
         <p id="set-status" class="set-status" role="status"></p>
       </fieldset>
@@ -648,11 +631,11 @@ export function shell(): string {
       <fieldset>
         <legend>공개 페이지</legend>
         <p class="hint">
-          공개 DB라면 토큰 없이도 누구나 볼 수 있는 <b>공유 주소</b>가 생깁니다.
-          제목과 설명은 DB에 저장되어 이 화면과 공개 페이지 상단에 함께 보입니다.
+          공개 DB라면 이 달력의 주소를 그대로 다른 사람에게 보낼 수 있습니다.
+          제목과 설명은 DB에 저장되어 페이지 상단과 링크 미리보기에 함께 보입니다.
         </p>
         <form id="meta-form">
-          <p class="hint">DB를 연결하면 제목과 설명을 적을 수 있습니다.</p>
+          <p class="hint">달력을 열면 제목과 설명을 적을 수 있습니다.</p>
         </form>
       </fieldset>
 
@@ -690,38 +673,86 @@ export function shell(): string {
 
 <script>
 window.habitChain = {
+  KEY: "habit-chain.profiles",
   today() {
     const d = new Date();
     const p = (n) => String(n).padStart(2, "0");
     return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
   },
-  db() {
-    try { return localStorage.getItem("habit-chain.db") || ""; } catch { return ""; }
+  /**
+   * Saved calendars: [{db, token}]. Earlier versions kept a single pair under
+   * two keys; that pair folds in as a profile on first read. The old keys are
+   * removed only once the new list is safely stored — persist can fail, and
+   * failing must not delete the only copy of a token.
+   */
+  profiles() {
+    let list = [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(this.KEY) || "[]");
+      if (Array.isArray(parsed)) {
+        list = parsed
+          .filter((p) => p && typeof p.db === "string" && p.db !== "")
+          .map((p) => ({ db: p.db, token: typeof p.token === "string" ? p.token : "" }));
+      }
+    } catch {}
+    try {
+      const oldDb = localStorage.getItem("habit-chain.db");
+      if (oldDb !== null) {
+        if (oldDb !== "" && !list.some((p) => p.db === oldDb)) {
+          list.push({ db: oldDb, token: localStorage.getItem("habit-chain.token") || "" });
+        }
+        if (this.persist(list)) {
+          localStorage.removeItem("habit-chain.db");
+          localStorage.removeItem("habit-chain.token");
+        }
+      }
+    } catch {}
+    return list;
   },
+  persist(list) {
+    try {
+      localStorage.setItem(this.KEY, JSON.stringify(list));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+  // Which calendar this page shows. The URL is the whole answer.
+  // The slash is written [/]: this script sits inside a template literal, so
+  // an escaped slash loses a layer and shatters the regex.
+  pathDb() {
+    const m = /^[/]@([A-Za-z0-9_-]+[/][A-Za-z0-9_-]+)$/.exec(location.pathname);
+    return m ? m[1] : "";
+  },
+  db() {
+    return this.pathDb();
+  },
+  // The token rides only on the calendar it was saved for. Visiting someone
+  // else's calendar must never leak the tokens saved for other DBs.
   token() {
-    try { return localStorage.getItem("habit-chain.token") || ""; } catch { return ""; }
+    const mine = this.profiles().find((p) => p.db === this.db());
+    return mine ? mine.token : "";
   },
   /**
-   * Settings save only on the button.
+   * Adds or updates one calendar profile. Settings save only on the button —
+   * onchange autosave once stored half-pasted tokens.
    *
-   * When onchange was the save, half-pasting a token and moving focus stored
-   * the half, with nothing to undo it. Now one button saves and one clears.
+   * A non-empty token is asked about at DoltHub before it is stored. Only a
+   * definitive rejection blocks the save: an unreachable DoltHub is not
+   * evidence the token is bad, so that case saves anyway, says the check did
+   * not happen, and stays on this page so the note is actually seen.
    *
-   * A non-empty token is asked about at DoltHub before it is stored — a typo
-   * used to sit quietly until the first write. Only a definitive rejection
-   * blocks the save: an unreachable DoltHub is not evidence the token is bad,
-   * so that case saves anyway and says the check did not happen.
-   *
-   * Changing the DB makes what is on screen someone else's, so saving reloads.
+   * A verified save moves to the calendar's own URL, or reloads in place.
    */
   async save() {
     if (this._saving) return;
     const db = document.getElementById("set-db").value.trim();
     const token = document.getElementById("set-token").value.trim();
-    // The slash is written [/]: this script sits inside a template literal, so
-    // an escaped slash loses a layer and shatters the regex, taking the whole
-    // script with it.
-    if (db !== "" && !/^[A-Za-z0-9_-]{1,64}[/][A-Za-z0-9_-]{1,64}$/.test(db)) {
+    if (db === "") {
+      this.status("DB 이름을 넣어 주세요. owner/name 형식입니다.", true);
+      return;
+    }
+    if (!/^[A-Za-z0-9_-]{1,64}[/][A-Za-z0-9_-]{1,64}$/.test(db)) {
       this.status("DB 이름은 owner/name 형식이어야 합니다.", true);
       return;
     }
@@ -757,35 +788,117 @@ window.habitChain = {
       }
     }
 
-    try {
-      localStorage.setItem("habit-chain.db", db);
-      localStorage.setItem("habit-chain.token", token);
-    } catch {
+    const list = this.profiles();
+    const at = list.findIndex((p) => p.db === db);
+    if (at >= 0) list[at] = { db: db, token: token };
+    else list.push({ db: db, token: token });
+    if (!this.persist(list)) {
       this.status("이 브라우저에 저장할 수 없습니다.", true);
       return;
     }
-    document.getElementById("set-db").value = db;
-    document.getElementById("set-token").value = token;
-    this.syncExport();
+    this.renderProfiles();
 
-    // Nothing to read, so closing would only reveal guidance. Stay open.
-    if (db === "") {
-      this.status("DB 이름이 비어 있어 읽을 사슬이 없습니다.", true);
-      this.reload();
-      return;
-    }
-
-    // Saved but unverified. Stay open so the note is actually seen.
+    // Saved but unverified. Stay here so the note is actually seen.
     if (unchecked !== "") {
       this.status("저장했습니다. " + unchecked, true);
-      this.reload();
+      if (this.pathDb() === db) this.reload();
       return;
     }
 
-    // Nothing left to see here. Close, and read the new DB in place.
-    document.getElementById("settings").close();
-    this.say(token === "" ? "저장했습니다. 토큰이 없어 읽기만 됩니다." : "저장했습니다. 토큰을 확인했습니다. 사슬을 다시 읽습니다.");
-    this.reload();
+    if (this.pathDb() === db) {
+      if (token !== "") document.body.classList.remove("viewer");
+      else document.body.classList.add("viewer");
+      document.getElementById("settings").close();
+      this.say("저장했습니다. 사슬을 다시 읽습니다.");
+      this.reload();
+      return;
+    }
+    // Each calendar lives at its own URL now; go there.
+    location.href = "/@" + db;
+  },
+  /* 설정 안의 저장된 달력 목록. DB 이름은 저장소에서 온 값이라 DOM API로만 넣는다. */
+  renderProfiles() {
+    const box = document.getElementById("profile-list");
+    if (!box) return;
+    box.textContent = "";
+    const list = this.profiles();
+    if (list.length === 0) {
+      const p = document.createElement("p");
+      p.className = "hint";
+      p.textContent = "저장된 달력이 아직 없습니다.";
+      box.appendChild(p);
+      return;
+    }
+    const here = this.pathDb();
+    for (const prof of list) {
+      const row = document.createElement("div");
+      row.className = "profile-row" + (prof.db === here ? " here" : "");
+      const a = document.createElement("a");
+      a.className = "profile-open";
+      a.href = "/@" + prof.db;
+      const name = document.createElement("code");
+      name.textContent = prof.db;
+      const state = document.createElement("small");
+      state.textContent = prof.token === "" ? "읽기 전용" : "기록 가능";
+      a.appendChild(name);
+      a.appendChild(state);
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "ghost";
+      del.textContent = "지우기";
+      del.onclick = () => this.removeProfile(prof.db, del);
+      row.appendChild(a);
+      row.appendChild(del);
+      box.appendChild(row);
+    }
+  },
+  /* 지우기는 같은 버튼을 두 번. 모달 위에 모달을 얹지 않기 위한 최소한의 확인. */
+  removeProfile(db, btn) {
+    if (btn.dataset.armed !== "1") {
+      btn.dataset.armed = "1";
+      btn.textContent = "정말 지울까요?";
+      setTimeout(() => {
+        btn.dataset.armed = "";
+        btn.textContent = "지우기";
+      }, 2500);
+      return;
+    }
+    this.persist(this.profiles().filter((p) => p.db !== db));
+    this.renderProfiles();
+    this.status("이 브라우저에서 지웠습니다. DoltHub의 데이터와 토큰은 그대로 있습니다.", false);
+  },
+  /* 저장된 달력이 여럿일 때 홈은 목록 대신 갈림길이 된다. htmx는 defer라 이
+     코드가 먼저 돈다 — hx-get을 떼면 목록 요청 자체가 나가지 않는다. */
+  renderPicker(list) {
+    const el = document.getElementById("habits");
+    if (!el) return;
+    el.removeAttribute("hx-get");
+    el.removeAttribute("hx-trigger");
+    el.textContent = "";
+    const box = document.createElement("div");
+    box.className = "empty picker";
+    const h = document.createElement("h2");
+    h.textContent = "어느 달력을 열까요?";
+    const wrap = document.createElement("div");
+    wrap.className = "picker-list";
+    for (const prof of list) {
+      const a = document.createElement("a");
+      a.className = "picker-item";
+      a.href = "/@" + prof.db;
+      const name = document.createElement("code");
+      name.textContent = prof.db;
+      const state = document.createElement("small");
+      state.textContent = prof.token === "" ? "읽기 전용" : "기록 가능";
+      a.appendChild(name);
+      a.appendChild(state);
+      wrap.appendChild(a);
+    }
+    const hint = document.createElement("p");
+    hint.textContent = "설정에서 달력을 더하거나 지울 수 있습니다.";
+    box.appendChild(h);
+    box.appendChild(wrap);
+    box.appendChild(hint);
+    el.appendChild(box);
   },
   /**
    * Reloads the list.
@@ -801,7 +914,8 @@ window.habitChain = {
     const el = document.getElementById("habits");
     if (!el) return;
     el.innerHTML = '<p class="sr-only">불러오는 중</p><div class="sk" aria-hidden="true"><div></div><div></div></div>';
-    htmx.ajax("GET", "/habits", { source: el, target: el, swap: "innerHTML" });
+    const path = this.pathDb() === "" ? "/habits" : "/@" + this.pathDb() + "/habits";
+    htmx.ajax("GET", path, { source: el, target: el, swap: "innerHTML" });
   },
   // Tells screen readers why the screen changed. Same slot as renderLive.
   say(msg) {
@@ -831,17 +945,6 @@ window.habitChain = {
     const a = document.getElementById("export-link");
     const db = this.db();
     if (a) a.href = db ? "/export?db=" + encodeURIComponent(db) : "/export";
-  },
-  forget() {
-    try {
-      localStorage.removeItem("habit-chain.db");
-      localStorage.removeItem("habit-chain.token");
-    } catch {}
-    document.getElementById("set-db").value = "";
-    document.getElementById("set-token").value = "";
-    this.syncExport();
-    this.status("이 브라우저에서 지웠습니다.", false);
-    this.reload();
   },
   clearToast() {
     document.getElementById("toast").innerHTML = "";
@@ -881,10 +984,15 @@ window.habitChain = {
     el.value = name;
     el.focus();
   },
-  // The shared title also sits atop the list; redraw the list after saving it.
+  // The title also crowns this page; update it in place after a save.
   afterMetaSave(event) {
     if (!event.detail.successful || event.detail.xhr.status >= 400) return;
-    this.reload();
+    const t = document.getElementById("meta-title");
+    const d = document.getElementById("meta-desc");
+    const ht = document.getElementById("cal-title");
+    const hd = document.getElementById("cal-desc");
+    if (ht && t) ht.textContent = t.value.trim() || this.pathDb() + "의 습관 달력";
+    if (hd && d) hd.textContent = d.value.trim();
   },
   // Advance the colour after a successful add, or everything ends up alike.
   afterAdd(event, form) {
@@ -897,10 +1005,31 @@ window.habitChain = {
   },
 };
 
+/* 홈과 달력 페이지의 갈림길. 프로필이 하나면 그 달력으로 바로 가고, 여럿이면
+   고르게 한다. 달력 페이지에서는 토큰 없는 브라우저를 구경꾼으로 표시한다. */
+(function () {
+  const here = window.habitChain.pathDb();
+  if (here !== "") {
+    const mine = window.habitChain.profiles().find((p) => p.db === here);
+    if (!mine || mine.token === "") document.body.classList.add("viewer");
+    return;
+  }
+  if (location.pathname !== "/") return;
+  const list = window.habitChain.profiles();
+  if (list.length === 1) {
+    location.replace("/@" + list[0].db);
+    return;
+  }
+  if (list.length >= 2) window.habitChain.renderPicker(list);
+})();
+
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("set-db").value = window.habitChain.db();
-  document.getElementById("set-token").value = window.habitChain.token();
-  window.habitChain.syncExport();
+  const chain = window.habitChain;
+  const mine = chain.profiles().find((p) => p.db === chain.pathDb());
+  document.getElementById("set-db").value = mine ? mine.db : chain.pathDb();
+  document.getElementById("set-token").value = mine ? mine.token : "";
+  chain.renderProfiles();
+  chain.syncExport();
 });
 
 /* 쓰기 왕복이 1.5~2초다. 그동안 아무 표시가 없으면 눌린 건지 알 수 없다. */
