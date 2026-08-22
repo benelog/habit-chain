@@ -841,7 +841,8 @@ window.habitChain = {
       p.className = "hint";
       p.textContent = "저장된 달력이 아직 없습니다. 아래에서 첫 달력을 추가하세요.";
       box.appendChild(p);
-      this.openForm();
+      // Already-open form keeps what was half-typed; only unfold a closed one.
+      if (document.getElementById("profile-form").hidden) this.openForm();
       return;
     }
     const here = this.pathDb();
