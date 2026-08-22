@@ -29,8 +29,8 @@ import {
   renderPrepare,
   renderSetup,
   renderToast,
-  shell,
-} from "./render";
+} from "./fragments";
+import { shell } from "./shell";
 
 interface Env {
   ASSETS: Fetcher;

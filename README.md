@@ -80,9 +80,10 @@ worker/src/
   index.ts               라우팅
   model.ts               도메인 타입과 사슬 계산 (순수 함수, 네트워크 없음)
   dolt.ts                DoltHub 읽기·쓰기와 SQL 만들기
-  render.ts              HTML 조각과 페이지 껍데기
+  fragments.ts           HTML 조각
+  shell.ts               페이지 껍데기
   model.test.ts          테스트 17개 — vitest로 0.1초에 돈다
-web/                     정적 자산 (app.css, htmx.min.js, PWA)
+web/                     정적 자산 (app.js 브라우저 스크립트, app.css, htmx.min.js, PWA)
 sql/schema.sql           DoltHub 초기 스키마
 ```
 

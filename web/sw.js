@@ -10,6 +10,7 @@ const CACHE = `habit-chain-${BUILD_ID}`;
 // caching one would show stale records forever.
 const SHELL = [
   "./app.css",
+  "./app.js",
   "./htmx.min.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",

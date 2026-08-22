@@ -1,33 +1,34 @@
 /**
- * render.ts fragments, checked as strings.
+ * Fragments and the page shell, checked as strings.
  *
- * One thing matters most here: the browser script lives inside a template
- * literal, so one misplaced escape breaks the entire script. The page still
- * renders while settings, the progress bar and today's date all go dead — and
- * no server test would notice. So shell()'s script is really parsed below.
+ * The browser script is a file of its own now, but the shell still depends on
+ * what it defines — hx-headers calls habitChain before anything else runs — so
+ * the assertions that watch that script read web/app.js directly.
  */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { renderCalHead, renderHabits, renderMetaForm, renderSetup, shell } from "./render";
+import { renderCalHead, renderHabits, renderMetaForm, renderSetup } from "./fragments";
+import { shell } from "./shell";
 import type { State } from "./model";
 
-/** Pulls out just the inline script shell() embeds. */
-function inlineScript(html: string): string {
-  const m = /<script>([\s\S]*?)<\/script>/.exec(html);
-  expect(m, "shell()에 인라인 스크립트가 있어야 한다").not.toBeNull();
-  return m![1]!;
-}
+/** The browser script, as text. npm test always runs from worker/. */
+const appSrc = readFileSync("../web/app.js", "utf8");
 
 describe("shell", () => {
-  it("인라인 스크립트가 문법적으로 성립한다", () => {
-    const src = inlineScript(shell());
+  it("브라우저 스크립트가 문법적으로 성립한다", () => {
     // new Function parses without running: no document or htmx needed.
-    expect(() => new Function(src)).not.toThrow();
+    expect(() => new Function(appSrc)).not.toThrow();
+  });
+
+  it("스크립트는 htmx 뒤에 실린다 — 순서가 곧 초기화 순서다", () => {
+    const html = shell();
+    expect(html.indexOf("/htmx.min.js")).toBeLessThan(html.indexOf("/app.js"));
+    expect(html).toContain('<script src="/app.js" defer></script>');
   });
 
   it("DB 이름 검사는 owner/name만 통과시킨다", () => {
-    const src = inlineScript(shell());
-    const m = /!(\/\^\[A-Za-z0-9_-\][\s\S]*?\/)\.test\(db\)/.exec(src);
+    const m = /!(\/\^\[A-Za-z0-9_-\][\s\S]*?\/)\.test\(db\)/.exec(appSrc);
     expect(m, "save()에 DB 이름 정규식이 있어야 한다").not.toBeNull();
     const re = new Function(`return ${m![1]}`)() as RegExp;
     expect(re.test("benelog/habit-chain")).toBe(true);
@@ -37,26 +38,24 @@ describe("shell", () => {
   });
 
   it("설정은 버튼으로만 저장된다", () => {
-    const html = shell();
-    expect(html).toContain("habitChain.save()");
-    expect(html).toContain("removeProfile");
+    expect(shell()).toContain("habitChain.save()");
+    expect(appSrc).toContain("removeProfile");
     // Going back to onchange autosave would store half-pasted tokens.
-    expect(html).not.toContain("habitChain.saveDb");
-    expect(html).not.toContain("habitChain.saveToken");
+    expect(appSrc).not.toContain("saveDb");
+    expect(appSrc).not.toContain("saveToken");
   });
 
   it("홈은 /habits 조각을 부르고, 갈림길 코드를 품는다", () => {
     const html = shell();
     expect(html).toContain('hx-get="/habits"');
-    expect(html).toContain("renderPicker");
     expect(html).not.toContain("og:title");
+    expect(appSrc).toContain("renderPicker");
   });
 
   it("처음 온 브라우저는 안내로 한 번만 보낸다", () => {
-    const src = inlineScript(shell());
     // 표식 저장이 실패하면 그대로 머문다 — /help와 / 사이 무한 이동을 막는다.
-    expect(src).toContain('localStorage.setItem("habit-chain.seen", "1")');
-    expect(src).toContain('location.replace("/help")');
+    expect(appSrc).toContain('localStorage.setItem("habit-chain.seen", "1")');
+    expect(appSrc).toContain('location.replace("/help")');
   });
 
   it("사슬 규칙은 설정이 아니라 /help가 설명한다", () => {
@@ -64,15 +63,13 @@ describe("shell", () => {
   });
 
   it("토큰은 페이지의 달력과 이름이 같은 프로필에서만 나온다", () => {
-    const src = inlineScript(shell());
-    expect(src).toContain("p.db === this.db()");
-    expect(src).toContain("pathDb");
+    expect(appSrc).toContain("p.db === this.db()");
+    expect(appSrc).toContain("pathDb");
   });
 
   it("옛 저장 키는 새 목록이 저장된 뒤에만 지운다", () => {
-    const src = inlineScript(shell());
     // persist가 실패하면 토큰의 유일한 사본이 사라지면 안 된다.
-    expect(src).toMatch(/if \(this\.persist\(list\)\) \{\s*localStorage\.removeItem\("habit-chain\.db"\)/);
+    expect(appSrc).toMatch(/if \(this\.persist\(list\)\) \{\s*localStorage\.removeItem\("habit-chain\.db"\)/);
   });
 });
 
@@ -125,7 +122,7 @@ describe("shell · 달력 페이지(/@owner/name)", () => {
   it("달력 전환 지름길은 달력 페이지에만 있고, 채우기 전에는 숨어 있다", () => {
     const cal = shell({ db: "a/b", meta: { title: "", description: "" }, origin: "https://x.test" });
     expect(cal).toContain('id="cal-switch" class="cal-switch" aria-label="내 달력" hidden');
-    expect(cal).toContain("renderCalSwitch");
+    expect(appSrc).toContain("renderCalSwitch");
     expect(shell()).not.toContain('id="cal-switch"');
   });
 
