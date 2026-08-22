@@ -5,7 +5,8 @@
  * The DB and token belong to the user, not the server. Settings values ride
  * along on every request:
  *   X-Dolt-DB     — owner/name. Without it there is nothing to read.
- *   X-Dolt-Token  — DoltHub → Settings → Tokens. Writes only.
+ *   X-Dolt-Token  — DoltHub → Settings → Tokens. Needed for writes; also
+ *                   attached to reads so a private DB is readable.
  *
  * The server holds no token and no default DB, so there is no shared secret to
  * guard: you write to your own DB with your own token, and cannot touch anyone
@@ -64,6 +65,9 @@ export default {
     const ctx = ctxOf(request, env);
 
     try {
+      if (path === "/api/token/check" && request.method === "GET") {
+        return await handleTokenCheck(ctx);
+      }
       if (isList) {
         return await handleList(request, ctx);
       }
@@ -90,11 +94,15 @@ export default {
         return await handleDelete(request, ctx, decodeURIComponent(habit[1]!));
       }
     } catch (err) {
+      // A rejected token reads as raw JSON otherwise; point at the fix.
+      const msg = dolt.isTokenRejected(err)
+        ? "DoltHub가 저장된 토큰을 거부했습니다. 설정에서 토큰을 다시 넣어 주세요."
+        : message(err);
       // A failed list leaves nothing to show, so the error takes the screen.
       // A failed write is different: what is on screen is still valid.
       return isList
-        ? new Response(renderError(message(err)), { status: 502, headers: HTML })
-        : toast(message(err), 502);
+        ? new Response(renderError(msg), { status: 502, headers: HTML })
+        : toast(msg, 502);
     }
 
     return env.ASSETS.fetch(request);
@@ -117,9 +125,9 @@ async function handleList(request: Request, ctx: Ctx): Promise<Response> {
   // is only inspected once that has failed.
   let state: State;
   try {
-    state = await dolt.pull(ctx.db, ctx.branch);
+    state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
   } catch (err) {
-    const shape = await dolt.inspect(ctx.db, ctx.branch);
+    const shape = await dolt.inspect(ctx.db, ctx.branch, ctx.token);
     if (!shape.branch || dolt.migrations(shape).length > 0) {
       return new Response(renderPrepare(shape, ctx.token !== ""), { headers: HTML });
     }
@@ -141,9 +149,9 @@ async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
   const guard = requireWrite(ctx);
   if (guard) return guard;
 
-  const stmts = dolt.migrations(await dolt.inspect(ctx.db, ctx.branch));
+  const stmts = dolt.migrations(await dolt.inspect(ctx.db, ctx.branch, ctx.token));
   if (stmts.length === 0) {
-    return new Response(renderHabits(await dolt.pull(ctx.db, ctx.branch), todayOf(request)), {
+    return new Response(renderHabits(await dolt.pull(ctx.db, ctx.branch, ctx.token), todayOf(request)), {
       headers: HTML,
     });
   }
@@ -159,7 +167,7 @@ async function handlePrepare(request: Request, ctx: Ctx): Promise<Response> {
     );
   }
 
-  const state = await dolt.pull(ctx.db, ctx.branch);
+  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
   return new Response(
     renderHabits(state, todayOf(request)) + renderLive("DB를 준비했습니다."),
     { headers: HTML },
@@ -188,7 +196,7 @@ async function handleAdd(request: Request, ctx: Ctx): Promise<Response> {
   await dolt.write(ctx.token, ctx.db, ctx.branch, [dolt.upsertHabit(habit)]);
 
   const today = todayOf(request);
-  const state = await dolt.pull(ctx.db, ctx.branch);
+  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
   return new Response(renderHabits(state, today) + renderLive(`${habit.name} 추가됨.`), {
     headers: HTML,
   });
@@ -216,7 +224,7 @@ async function handleToggle(
     return toast("아직 오지 않은 날은 체크할 수 없습니다.", 400);
   }
 
-  const state = await dolt.pull(ctx.db, ctx.branch);
+  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
 
   // Deleted on another device. A whole list cannot go in a card slot, so
   // retarget to the list and redraw.
@@ -260,7 +268,7 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
   const description = normalizeDesc(String(form.get("description") ?? ""));
 
   const today = todayOf(request);
-  let state = await dolt.pull(ctx.db, ctx.branch);
+  let state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
 
   // Deleted elsewhere; answering in the card slot would leave a ghost card.
   if (!state.habits.some((h) => h.id === habitID)) {
@@ -273,7 +281,7 @@ async function handleEdit(request: Request, ctx: Ctx, habitID: string): Promise<
     dolt.updateHabit(habitID, name.slice(0, 60), description),
   ]);
 
-  state = await dolt.pull(ctx.db, ctx.branch);
+  state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
   const body =
     renderOneCard(state, habitID, today) +
     renderDay(state, today, true) +
@@ -287,15 +295,42 @@ async function handleDelete(request: Request, ctx: Ctx, habitID: string): Promis
 
   await dolt.write(ctx.token, ctx.db, ctx.branch, dolt.deleteHabit(habitID));
 
-  const state = await dolt.pull(ctx.db, ctx.branch);
+  const state = await dolt.pull(ctx.db, ctx.branch, ctx.token);
   return new Response(renderHabits(state, todayOf(request)) + renderLive("습관을 삭제했습니다."), {
     headers: HTML,
   });
 }
 
 /**
+ * Answers the settings dialog's "is this token any good?" before it is saved.
+ * Three verdicts, not two: only a definitive rejection from DoltHub blocks the
+ * save — an outage or a network failure must not read as a bad token.
+ */
+async function handleTokenCheck(ctx: Ctx): Promise<Response> {
+  if (ctx.token === "") {
+    return json({ state: "invalid", error: "토큰이 비어 있습니다." }, 400);
+  }
+  if (!isToken(ctx.token)) {
+    return json(
+      { state: "invalid", error: "토큰에 쓸 수 없는 글자가 들어 있습니다. 다시 붙여 넣어 주세요." },
+      400,
+    );
+  }
+
+  const check = await dolt.verifyToken(ctx.token);
+  if (check.state === "valid") {
+    return json({ state: "valid" });
+  }
+  if (check.state === "invalid") {
+    return json({ state: "invalid", error: `DoltHub가 이 토큰을 거부했습니다: ${check.detail}` }, 400);
+  }
+  return json({ state: "unknown", error: check.detail }, 200);
+}
+
+/**
  * Opened as a link, so no hx-headers are attached and the DB comes from the
- * query string. Reads need no token, so no secret rides in the URL.
+ * query string. The token is deliberately left off — a secret must not ride in
+ * a URL — so exporting works for public DBs only.
  */
 async function handleExport(url: URL, ctx: Ctx): Promise<Response> {
   const asked = (url.searchParams.get("db") || "").trim();
@@ -306,7 +341,7 @@ async function handleExport(url: URL, ctx: Ctx): Promise<Response> {
     return json({ error: problem }, 400);
   }
 
-  const state = await dolt.pull(target.db, target.branch);
+  const state = await dolt.pull(target.db, target.branch, target.token);
   const day = new Date().toISOString().slice(0, 10);
   return new Response(JSON.stringify(state, null, 2), {
     headers: {

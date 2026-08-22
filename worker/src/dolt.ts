@@ -9,6 +9,10 @@ import type { Check, Habit, State } from "./model";
 import { sqlEscape } from "./model";
 
 const API = "https://www.dolthub.com/api/v1alpha1";
+// v2 is used only where v1alpha1 has no documented equivalent (token check).
+// The SQL read/write paths stay on v1alpha1: the DB-prepare flow leans on its
+// verified-but-undocumented write behaviour, and v1alpha1 is not deprecated.
+const API_V2 = "https://www.dolthub.com/api/v2";
 const POLL_INTERVAL_MS = 600;
 const POLL_TIMEOUT_MS = 25_000;
 
@@ -46,8 +50,12 @@ interface QueryResponse {
 
 const str = (v: unknown): string => (v == null ? "" : String(v));
 
-/** Runs a read query. db is "owner/name". */
-async function query(db: string, branch: string, q: string): Promise<QueryResponse> {
+/**
+ * Runs a read query. db is "owner/name". The token rides along when present so
+ * private DBs are readable; DoltHub rejects a bad token even on public reads,
+ * so a stale token surfaces here rather than at the first write.
+ */
+async function query(db: string, branch: string, token: string, q: string): Promise<QueryResponse> {
   const [owner, name] = db.split("/");
   if (!owner || !name) {
     throw new Error(`DB 이름은 owner/name 형식이어야 합니다: ${db}`);
@@ -57,7 +65,9 @@ async function query(db: string, branch: string, q: string): Promise<QueryRespon
     `${API}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}` +
     `/${encodeURIComponent(branch || "main")}?q=${encodeURIComponent(q)}`;
 
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: token === "" ? {} : { authorization: `token ${token}` },
+  });
   const text = await res.text();
   if (!res.ok) {
     throw new Error(`DoltHub ${res.status}: ${text.slice(0, 200)}`);
@@ -76,10 +86,10 @@ async function query(db: string, branch: string, q: string): Promise<QueryRespon
 }
 
 /** Reads habits and checks. Queried in parallel — each takes ~0.9s. */
-export async function pull(db: string, branch: string): Promise<State> {
+export async function pull(db: string, branch: string, token: string): Promise<State> {
   const [habitRes, checkRes] = await Promise.all([
-    query(db, branch, "SELECT id, name, description, color, created_at, archived FROM habits ORDER BY created_at"),
-    query(db, branch, "SELECT habit_id, check_date, note FROM checks ORDER BY check_date"),
+    query(db, branch, token, "SELECT id, name, description, color, created_at, archived FROM habits ORDER BY created_at"),
+    query(db, branch, token, "SELECT habit_id, check_date, note FROM checks ORDER BY check_date"),
   ]);
 
   const habits: Habit[] = (habitRes.rows ?? [])
@@ -112,10 +122,10 @@ export async function pull(db: string, branch: string): Promise<State> {
  * SHOW TABLES keys its rows `Tables_in_<db>`, which differs per DB, so take the
  * value rather than look up a key. SHOW COLUMNS throws when the table is absent.
  */
-export async function inspect(db: string, branch: string): Promise<Shape> {
+export async function inspect(db: string, branch: string, token: string): Promise<Shape> {
   let res: QueryResponse;
   try {
-    res = await query(db, branch, "SHOW TABLES");
+    res = await query(db, branch, token, "SHOW TABLES");
   } catch (err) {
     // A brand-new DB: no commits, so no branch and nothing to read. That is a
     // starting point, not a fault — the caller shows setup, not an error.
@@ -135,7 +145,7 @@ export async function inspect(db: string, branch: string): Promise<Shape> {
   };
   if (!shape.habits) return shape;
 
-  const cols = await query(db, branch, "SHOW COLUMNS FROM habits");
+  const cols = await query(db, branch, token, "SHOW COLUMNS FROM habits");
   shape.description = (cols.rows ?? []).some(
     (r) => str(r["Field"]).toLowerCase() === "description",
   );
@@ -149,6 +159,61 @@ export async function inspect(db: string, branch: string): Promise<Shape> {
 export function isBranchMissing(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /branch not found/i.test(msg);
+}
+
+/**
+ * DoltHub's two ways of saying the auth header is no good — malformed, and
+ * well-formed but unknown (revoked, mistyped). Both observed 2026-08 on the
+ * v1alpha1 read endpoint. Same caveat as isBranchMissing: message matching is
+ * brittle, and a miss just shows the raw error instead of the friendly one.
+ */
+export function isTokenRejected(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /invalid authorization header|no token found for given api token/i.test(msg);
+}
+
+/**
+ * What DoltHub said about a token, kept as three states on purpose: a DoltHub
+ * outage or network failure must not read as "your token is wrong".
+ */
+export type TokenCheck =
+  | { state: "valid" }
+  | { state: "invalid"; detail: string }
+  | { state: "unknown"; detail: string };
+
+/**
+ * Asks DoltHub whether the token identifies anyone, via the documented v2
+ * /user endpoint (v1alpha1 has no documented equivalent). Any 2xx counts as
+ * valid — the body is not parsed, so a shape change cannot fail a good token.
+ */
+export async function verifyToken(token: string): Promise<TokenCheck> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_V2}/user`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    return {
+      state: "unknown",
+      detail: err instanceof Error ? err.message : String(err),
+    };
+  }
+  if (res.ok) return { state: "valid" };
+
+  // Errors follow RFC 9457: the human-readable part sits in `detail`.
+  const text = await res.text().catch(() => "");
+  let detail = "";
+  try {
+    detail = String((JSON.parse(text) as { detail?: unknown }).detail ?? "");
+  } catch {
+    // Not JSON; fall through to the raw text.
+  }
+  detail = detail || text.slice(0, 200);
+
+  if (res.status === 401 || res.status === 403) {
+    return { state: "invalid", detail };
+  }
+  return { state: "unknown", detail: `DoltHub ${res.status}: ${detail}` };
 }
 
 /**

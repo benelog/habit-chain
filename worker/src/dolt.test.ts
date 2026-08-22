@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { isBranchMissing, MIGRATIONS, migrations, updateHabit, upsertHabit } from "./dolt";
+import { isBranchMissing, isTokenRejected, MIGRATIONS, migrations, updateHabit, upsertHabit } from "./dolt";
 import type { Habit } from "./model";
 
 const base: Habit = {
@@ -88,6 +88,19 @@ describe("isBranchMissing", () => {
   it("다른 오류는 그대로 오류다. 준비 안내로 덮으면 진짜 고장을 감춘다", () => {
     expect(isBranchMissing(new Error("DoltHub 404: repository not found"))).toBe(false);
     expect(isBranchMissing(new Error("table not found: habits"))).toBe(false);
+  });
+});
+
+describe("isTokenRejected", () => {
+  it("DoltHub가 토큰을 거부한 두 가지 말투를 알아본다", () => {
+    // 2026-08 v1alpha1 읽기 엔드포인트에서 관찰한 실제 메시지 그대로.
+    expect(isTokenRejected(new Error('DoltHub 400: {"query_execution_message":"invalid authorization header"}'))).toBe(true);
+    expect(isTokenRejected(new Error("no token found for given API token"))).toBe(true);
+  });
+
+  it("다른 오류를 토큰 문제로 오진하지 않는다", () => {
+    expect(isTokenRejected(new Error("query error: branch not found"))).toBe(false);
+    expect(isTokenRejected(new Error("DoltHub 404: repository not found"))).toBe(false);
   });
 });
 

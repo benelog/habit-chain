@@ -109,7 +109,7 @@ export function renderSetup(): string {
       <li>DoltHub의 <code>Settings → Tokens</code>에서 토큰을 발급합니다.</li>
       <li>설정에 <code>owner/name</code>과 토큰을 넣고 <b>저장</b>합니다.</li>
     </ol>
-    <p class="setup-note">DB 이름만 넣어도 공개 DB는 읽힙니다. 기록하려면 토큰까지 있어야 합니다.</p>
+    <p class="setup-note">DB 이름만 넣어도 공개 DB는 읽힙니다. 기록하거나 비공개 DB를 읽으려면 토큰까지 있어야 합니다.</p>
     <div class="chips">
       <button class="primary" type="button" onclick="document.getElementById('settings').showModal()">설정 열기</button>
       <a class="ghost" href="/schema.sql" target="_blank" rel="noopener">스키마 SQL 보기</a>
@@ -465,8 +465,8 @@ export function shell(): string {
         <legend>DoltHub</legend>
         <p class="hint">
           이 앱은 <a href="https://www.dolthub.com" target="_blank" rel="noopener">DoltHub</a>에 데이터를 저장합니다.
-          <b>DB 이름이 있어야 사슬을 읽고</b>, 토큰까지 있어야 기록됩니다.
-          비워 두면 이 앱은 아무것도 보여 주지 못합니다.
+          <b>DB 이름이 있어야 사슬을 읽고</b>, 토큰까지 있어야 기록됩니다. 비공개 DB는 읽을 때도 토큰이 필요합니다.
+          토큰은 저장 버튼을 누를 때 DoltHub에 물어 바로 확인합니다.
         </p>
         <label for="set-db">DB 이름
           <input id="set-db" type="text" placeholder="owner/name" spellcheck="false" autofocus
@@ -540,9 +540,15 @@ window.habitChain = {
    * When onchange was the save, half-pasting a token and moving focus stored
    * the half, with nothing to undo it. Now one button saves and one clears.
    *
+   * A non-empty token is asked about at DoltHub before it is stored — a typo
+   * used to sit quietly until the first write. Only a definitive rejection
+   * blocks the save: an unreachable DoltHub is not evidence the token is bad,
+   * so that case saves anyway and says the check did not happen.
+   *
    * Changing the DB makes what is on screen someone else's, so saving reloads.
    */
-  save() {
+  async save() {
+    if (this._saving) return;
     const db = document.getElementById("set-db").value.trim();
     const token = document.getElementById("set-token").value.trim();
     // The slash is written [/]: this script sits inside a template literal, so
@@ -552,6 +558,38 @@ window.habitChain = {
       this.status("DB 이름은 owner/name 형식이어야 합니다.", true);
       return;
     }
+    // Mirrors the server's isToken; [!-~] is printable ASCII. Checked here
+    // because fetch() refuses a header holding anything else, which would
+    // otherwise pass as "could not check" and get saved.
+    if (token !== "" && !/^[!-~]{8,256}$/.test(token)) {
+      this.status("토큰에 쓸 수 없는 글자가 들어 있습니다. 다시 붙여 넣어 주세요.", true);
+      return;
+    }
+
+    let unchecked = "";
+    if (token !== "") {
+      this._saving = true;
+      this.status("토큰을 확인하는 중…", false);
+      let verdict;
+      try {
+        const res = await fetch("/api/token/check", {
+          headers: { "X-Dolt-Token": token },
+          cache: "no-store",
+        });
+        verdict = await res.json();
+      } catch {
+        verdict = { state: "unknown" };
+      }
+      this._saving = false;
+      if (verdict.state === "invalid") {
+        this.status(verdict.error || "DoltHub가 이 토큰을 거부했습니다.", true);
+        return;
+      }
+      if (verdict.state !== "valid") {
+        unchecked = "다만 DoltHub가 응답하지 않아 토큰은 확인하지 못했습니다.";
+      }
+    }
+
     try {
       localStorage.setItem("habit-chain.db", db);
       localStorage.setItem("habit-chain.token", token);
@@ -570,9 +608,16 @@ window.habitChain = {
       return;
     }
 
+    // Saved but unverified. Stay open so the note is actually seen.
+    if (unchecked !== "") {
+      this.status("저장했습니다. " + unchecked, true);
+      this.reload();
+      return;
+    }
+
     // Nothing left to see here. Close, and read the new DB in place.
     document.getElementById("settings").close();
-    this.say(token === "" ? "저장했습니다. 토큰이 없어 읽기만 됩니다." : "저장했습니다. 사슬을 다시 읽습니다.");
+    this.say(token === "" ? "저장했습니다. 토큰이 없어 읽기만 됩니다." : "저장했습니다. 토큰을 확인했습니다. 사슬을 다시 읽습니다.");
     this.reload();
   },
   /**
